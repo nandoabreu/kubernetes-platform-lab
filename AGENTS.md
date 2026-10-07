@@ -14,7 +14,8 @@ This repository is a practical learning lab for Kubernetes platform infrastructu
 
 ## Working agreements
 
-- The owner reviews every change before commit. Show the complete diff and wait for explicit commit instructions.
+- The owner reviews every change in Patched's side-by-side diff. After review, present a concise summary, explanation, affected files, validation, and proposed commit message; do not paste a unified diff into chat unless requested. Wait for explicit approval or requested changes before committing.
+- Commit one logical group at a time. After each commit, report its hash and summary, then wait for the owner's direction before preparing the next group.
 - Documentation-only changes may go directly to `main` after review; all other changes go through a pull request.
 - Use `.github/pull_request_template.md` for every pull request and complete each section.
 - Give each completed roadmap checkpoint a descriptive tag. Ask before pushing tags or creating GitHub releases.
