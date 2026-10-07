@@ -1,42 +1,42 @@
 # AGENTS.md
 
+**Note:** This file contains concise, model-directed instructions for AI agents. Human-readable documentation is in `README.md` and `docs/`.
+
 ## Project context
 
-This repository is a practical learning lab for Kubernetes platform
-infrastructure, beginning with high availability in a three-server K3s cluster
-on local libvirt VMs. Keep the first increments small, observable, and
-reproducible.
+This repository is a practical learning lab for Kubernetes platform infrastructure, starting with a highly available three-server K3s cluster on local libvirt VMs. Keep increments small, observable, and reproducible.
 
 ## Read before changing
 
-- `docs/architecture.md` for topology, scope, and failure boundaries.
-- `docs/roadmap.md` for current checkpoints and release expectations.
-- The relevant runbook before changing its procedure.
+- Read `docs/architecture.md` for topology, scope, and failure boundaries.
+- Read `docs/roadmap.md` for checkpoints and release expectations.
+- Read the relevant runbook before changing its procedure.
 
 ## Working agreements
 
-- Communicate with the owner in Brazilian Portuguese. Write repository files,
-  code, comments, and shared project communications in English (UK preferred over US).
-- The owner reviews all changes before they are committed. Show the complete
-  diff and wait for explicit review/commit instructions; do not commit
-  automatically.
-- Documentation, comments, and log-message-only changes may be committed
-  directly to `main`, after review. All other changes must be delivered through
-  a pull request.
-- An instruction such as "commit and open a PR" authorises both actions; do not
-  ask for a second confirmation after the owner has reviewed the changes and authorised both.
-- Each roadmap checkpoint must have a replayable GitHub release. Do not create
-  releases or tags without explicit authorisation.
-- Do not introduce implementation files or boilerplate ahead of the agreed
-  roadmap checkpoint.
-- Keep the lab's limits explicit: three VMs on one physical host do not provide
-  physical-host high availability.
+- The owner reviews every change before commit. Show the complete diff and wait for explicit commit instructions.
+- Documentation-only changes may go directly to `main` after review; all other changes go through a pull request.
+- Use `.github/pull_request_template.md` for every pull request and complete each section.
+- Give each completed roadmap checkpoint a descriptive tag. Ask before pushing tags or creating GitHub releases.
+- Do not add implementation files or boilerplate before the relevant roadmap checkpoint.
+- State clearly that three VMs on one physical host do not provide host-level high availability.
 - Keep secrets, local state, VM images, and generated credentials out of Git.
-- Use ASCII diagrams for simple topologies. Keep runbooks ordered, actionable,
-  and clear about validation and cleanup.
+- Use ASCII for simple diagrams and Mermaid for complex ones. Keep runbooks ordered, actionable, and explicit about validation and cleanup.
+
+## Code languages and style
+
+- Use Terraform and Ansible for infrastructure configuration. Write custom scripts in Python 3 or Bash.
+- For Python, follow PEP 8 and use appropriate formatting, linting, and tests.
+
+## Python code quality
+
+- Give each function one clear responsibility and a descriptive name; add abstractions only when useful.
+- Validate preconditions early and keep the happy path linear.
+- Keep functions focused; split work when a function's purpose needs “and” to describe it.
+- Close every resource on all exit paths, including errors.
+- Never swallow errors silently; bare `except: pass` is unacceptable.
+- Keep state local and avoid unnecessary module-level globals.
 
 ## Validation
 
-For documentation-only changes, inspect the rendered Markdown structure and
-links, review the complete diff, and report any checks performed. Scope other
-validation to the files and checkpoint being changed.
+For documentation-only changes, review Markdown structure and links, inspect the complete diff, and report checks performed. Scope other validation to the changed files and current checkpoint.
