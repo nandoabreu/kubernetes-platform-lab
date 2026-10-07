@@ -1,0 +1,33 @@
+# Kubernetes High-Availability Lab
+
+A practical, resource-conscious lab for learning Kubernetes platform operations, starting with a three-server K3s cluster and embedded etcd.
+
+The lab runs on local libvirt VMs. Its first workload is a small HTTP application used to observe scheduling, service routing, and recovery. Kafka and other application platforms are outside this repository's initial scope.
+
+## Start here
+
+- Read the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md).
+- Follow the [host and VM baseline](docs/runbooks/host-and-vm-baseline.md).
+- Use the [cluster build and verification runbook](docs/runbooks/k3s-ha-cluster.md) when the relevant roadmap checkpoint is ready.
+
+## Initial target
+
+```text
+libvirt host
+`-- three K3s server VMs
+    |-- embedded etcd members (3; quorum is 2)
+    |-- Kubernetes control plane on each server
+    `-- lightweight HTTP demo workloads
+```
+
+The three VMs share one physical host and are not independent physical failure domains. This lab demonstrates node-level control-plane and workload behaviour, not host-level disaster tolerance.
+
+## Repository layout
+
+```text
+docs/         Architecture, roadmap, decisions, and runbooks
+.github/      Pull request template
+AGENTS.md     Repository-specific working instructions
+```
+
+Each completed roadmap checkpoint is documented and converges on a versioned GitHub release so the lab can be replayed later.

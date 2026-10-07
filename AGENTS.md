@@ -22,6 +22,8 @@ This repository is a practical learning lab for Kubernetes platform infrastructu
 - State clearly that three VMs on one physical host do not provide host-level high availability.
 - Keep secrets, local state, VM images, and generated credentials out of Git.
 - Use ASCII for simple diagrams and Mermaid for complex ones. Keep runbooks ordered, actionable, and explicit about validation and cleanup.
+- When adding Makefiles, put frequent commands first, group targets by workflow, and order sequential targets to match the runbooks. Add only targets needed by the active checkpoint.
+- Keep Markdown paragraphs and list items on single physical lines; do not wrap them to a fixed width.
 
 ## Code languages and style
 
