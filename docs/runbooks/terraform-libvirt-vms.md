@@ -56,6 +56,14 @@ virsh net-dhcp-leases k3s-lab
 
 The DHCP reservations should assign `10.77.0.11`, `10.77.0.12`, and `10.77.0.13` to `k3s-1`, `k3s-2`, and `k3s-3`. The network provides guest egress and host-to-guest access, not direct home-LAN exposure.
 
+Connect to a guest's serial console for boot output and an interactive terminal:
+
+```sh
+virsh console k3s-1
+```
+
+Replace the domain name to connect to another node. Press `Ctrl+]` to detach from the console without stopping the VM.
+
 Shut down guests gracefully after each session:
 
 ```sh
