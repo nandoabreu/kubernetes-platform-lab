@@ -17,6 +17,18 @@ The initial inspection found:
 
 These are observations, not reserved capacity. Recheck before each build because host use and free pool capacity change.
 
+## Initial dated snapshot
+
+The first Makefile status snapshot was recorded on 2026-10-07 at 16:06 +01:00. It showed 15 GiB RAM, 8.3 GiB available, 2.9 GiB of 4 GiB swap used, 8 logical CPUs, and load averages of 2.05, 1.58, and 1.28.
+
+The `/home` ext4 filesystem had 201.56 GiB total, 140.92 GiB used, and 50.33 GiB available to an unprivileged process. After refreshing the `extra` pool, libvirt reported 201.56 GiB capacity, 140.92 GiB allocation, and 60.64 GiB available. The approximately 10.3 GiB difference is the ext4 reserved-block allowance (2,698,103 blocks at 4 KiB); `df` excludes that space from ordinary available capacity, so use its available figure for the lab budget.
+
+Before refreshing the pool, libvirt reported 64.80 GiB available. `virsh pool-refresh extra` corrected the stale pool allocation figure. The pool directory contained 3.3 GiB of allocated files at the time of the snapshot.
+
+The existing `streaming-dev` VM was paused with 4 GiB configured and autostart enabled. The measured 8.3 GiB host availability includes the current paused-VM state; shut it down and rerun `make status` before relying on the three-node RAM budget. These values are a dated starting point, not evidence that Checkpoint 0 is complete.
+
+The planned 36 GiB maximum capacity for three sparse VM disks leaves 14.33 GiB below the snapshot's filesystem-available value, before accounting for the image copy or unrelated host writes. Maintain at least 10 GiB of filesystem headroom and remeasure after image download and VM creation; sparse disks can grow toward their configured maximum.
+
 This is a shared personal host, not a dedicated cluster host. The lab VMs should be started only for an exercise and shut down afterwards. Recheck `streaming-dev` autostart before host reboots or relying on the planned memory budget.
 
 ## Baseline checks
@@ -32,13 +44,15 @@ virsh list --all
 virsh dominfo streaming-dev
 ```
 
-Record date, available memory, swap use, load, free space, pool availability, and running VMs. Do not start the paused `streaming-dev` VM alongside the three planned VMs without re-evaluating the memory budget.
+Run `make status` for the same information in one dated report. It refreshes libvirt's pool inventory before displaying the pool figures; it does not start or modify VMs or volumes.
 
-Compare pool availability with free space on the underlying filesystem, and budget for disk growth as well as the configured maximum size. Swap already in use is a reason to measure current memory pressure, not by itself proof of active swapping.
+Record date, available memory, swap use, load, free space, pool availability, and running VMs. The paused `streaming-dev` VM still reserves 4 GiB of host memory; shut it down before starting the three lab VMs and reassess capacity. Its autostart setting is enabled, so account for it during host restarts.
+
+Compare pool availability with free space on the underlying filesystem, and budget for disk growth as well as configured maximum disk sizes. For the ext4 `/home` filesystem, pool availability includes reserved blocks that ordinary users cannot allocate; use `df`'s available figure for the safety budget. Swap already in use is a reason to measure current memory pressure, not by itself proof of active swapping.
 
 ## Initial VM budget
 
-The target is three VMs with 2 GiB RAM each (6 GiB assigned in total). Keep additional headroom for the host, libvirt/QEMU, and transient workloads. Do not use swap as the planned memory capacity for Kubernetes. If host `MemAvailable` falls materially during cluster activity or swap pressure grows, stop and reduce workload or VM allocations before proceeding.
+The target is three VMs with 2 GiB RAM each (6 GiB assigned in total). Keep additional headroom for the host, libvirt/QEMU, and transient workloads. Do not use swap as the planned memory capacity for Kubernetes. If host `MemAvailable` falls materially during cluster activity or swap pressure grows, stop and reduce workload or VM allocations before proceeding. Terraform's initial disk budget is 12 GiB per VM (36 GiB maximum virtual capacity total); compare that maximum with `df`-available space and retain at least 10 GiB of filesystem headroom.
 
 Use the `extra` pool for VM disks. Check pool free space and the planned maximum disk sizes, not only current sparse allocation. Preserve room for host operations and image growth.
 
@@ -62,3 +76,5 @@ Do not assume Wi-Fi bridging or direct LAN attachment works for libvirt guests. 
 - Guest image, network plan, API endpoint approach, and required disk capacity are documented.
 - No host networking or firewall change is required without an explicit, reversible procedure.
 - A session start/stop plan accounts for other host workloads and confirms that the cluster can resume after the VMs have been shut down.
+- A dated status snapshot records RAM and disk headroom and explains any difference between libvirt pool availability and filesystem availability.
+- The selected guest image and SHA-256 checksum, lab network, and stable address reservations are recorded.
