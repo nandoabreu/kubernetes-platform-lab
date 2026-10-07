@@ -14,11 +14,14 @@ Kafka and other application platforms are out of scope for the initial checkpoin
 
 ```text
 Physical libvirt host
-`-- libvirt pool: extra
-    |-- k3s-1 (2 GiB RAM): server + embedded etcd member
-    |-- k3s-2 (2 GiB RAM): server + embedded etcd member
-    `-- k3s-3 (2 GiB RAM): server + embedded etcd member
+|-- libvirt pool: extra (VM disks)
+|-- Terraform-managed NAT network: k3s-lab (10.77.0.0/24)
+|-- k3s-1 (2 GiB RAM): server + embedded etcd member
+|-- k3s-2 (2 GiB RAM): server + embedded etcd member
+`-- k3s-3 (2 GiB RAM): server + embedded etcd member
 ```
+
+Terraform owns only the lab network, VM domains, and VM disks. The existing `extra` storage pool and host networking remain host-owned prerequisites. The lab network uses NAT for guest egress and fixed DHCP reservations for stable guest addresses; it does not expose the VMs directly to the home LAN. VMs and the network are not configured to autostart with the host.
 
 All three VMs run the K3s server role. Each provides Kubernetes control-plane components and participates in the embedded etcd datastore. Three etcd members require a quorum of two and can tolerate one member being unavailable.
 
@@ -49,3 +52,5 @@ An external load balancer for the demo application is a separate exercise from t
 - Local VM state, generated credentials, and secrets remain outside Git.
 
 Use the `extra` libvirt pool for VM disks, subject to checking current free capacity and retaining operational headroom before provisioning. Host memory, swap, disk, and CPU pressure must be measured during exercises.
+
+Each VM is configured with two vCPUs, for six vCPUs total on a host with four physical cores and eight logical CPUs. These are schedulable virtual CPUs, not pinned or reserved physical cores; performance depends on concurrent host and guest workloads.

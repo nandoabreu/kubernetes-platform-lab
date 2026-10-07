@@ -15,7 +15,7 @@
 
 | Checkpoint | Capability | Exit evidence | Release outcome |
 |---|---|---|---|
-| 0 | Record host capacity, libvirt pool, VM sizing, network constraints, and lab limits | Baseline and prerequisites are documented; three 2 GiB VMs fit the measured host budget with operational headroom | Baseline release |
+| 0 | Capture dated host capacity, reconcile pool and filesystem space, define the image/network/address plan, and provision three VMs with Terraform | Measurements record RAM/disk headroom; the image checksum is verified; Terraform creates three 2 GiB VMs with stable addresses on the lab NAT network; the VMs can be stopped and restarted on demand | Baseline and VM provisioning release |
 | 1 | Form a three-server K3s cluster with embedded etcd | All servers are Ready; etcd quorum is healthy; stable API endpoint works | First cluster release |
 | 2 | Deploy a multi-replica HTTP demo behind a Kubernetes Service | Requests succeed and responses expose which replica served them | Workload-routing release |
 | 3 | Exercise control-plane and workload failures | One server can be stopped while API access and quorum remain; a failed Pod is recreated and traffic reaches ready replicas; each exercise records impact, detection, recovery owner/action, and recovery evidence | Failure-exercise release |
