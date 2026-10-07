@@ -1,10 +1,10 @@
 output "nodes" {
-  description = "Planned DHCP-reserved addresses and libvirt domain IDs for the lab VMs."
+  description = "DHCP-reserved addresses and stable libvirt domain UUIDs for the lab VMs."
   value = {
     for name, node in local.nodes : name => {
-      address   = node.ip
-      mac       = node.mac
-      domain_id = libvirt_domain.node[name].id
+      address     = node.ip
+      mac         = node.mac
+      domain_uuid = libvirt_domain.node[name].uuid
     }
   }
 }
