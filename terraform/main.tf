@@ -142,6 +142,24 @@ resource "libvirt_domain" "node" {
   }
 
   devices = {
+    serials = [
+      {
+        target = {
+          type = "isa-serial"
+          port = 0
+        }
+      }
+    ]
+
+    consoles = [
+      {
+        target = {
+          type = "serial"
+          port = 0
+        }
+      }
+    ]
+
     disks = [
       {
         device = "disk"
