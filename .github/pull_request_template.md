@@ -4,7 +4,9 @@
 
 ## Change type
 
-- [ ] Infrastructure or configuration
+- [ ] Feature
+- [ ] Bug fix
+- [ ] Tech debt / refactor
 - [ ] Documentation
 - [ ] Other
 
@@ -14,7 +16,9 @@
 
 ## Validation
 
-<!-- Commands and results. For documentation-only changes, describe the review performed. -->
+<!-- List commands and observed results. Include the target environment (for example, a libvirt host or VM) and relevant operational evidence. For documentation-only changes, describe the content and link review. -->
+
+<!-- Do not repeat checks already reported automatically by CI. If a relevant check could not be run, state why and identify any follow-up validation. -->
 
 ## Deployment and rollback
 
