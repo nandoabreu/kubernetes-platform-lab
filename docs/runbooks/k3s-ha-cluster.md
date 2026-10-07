@@ -23,6 +23,7 @@ This is the target procedure for Roadmap Checkpoint 1. Keep it as a plan until t
 7. Verify all three nodes, control-plane availability, datastore health, and access through the stable API endpoint.
 8. Stop one server at a time. Confirm the remaining two retain quorum and the API endpoint remains usable; restore it before testing another server.
 9. Record observed memory, swap, CPU, disk, recovery behaviour, and any limits.
+10. After restoring all three healthy servers, shut down the lab VMs when the exercise ends. On the next session, start them again and verify node readiness, etcd membership, and API access before continuing.
 
 Exact commands, service names, health checks, and endpoint implementation must be added after the selected K3s version and networking design are tested.
 
@@ -34,6 +35,7 @@ Exact commands, service names, health checks, and endpoint implementation must b
 - [ ] Stopping one server leaves two members, quorum, and API access.
 - [ ] Restarting the stopped server returns it to a healthy member state.
 - [ ] Host memory, swap, and `extra` pool usage remain within the agreed budget.
+- [ ] After an intentional full lab shutdown and restart, all three servers and the stable API endpoint return to a healthy state.
 - [ ] No secret, token, kubeconfig credential, or generated key was committed.
 
 ## Recovery and cleanup

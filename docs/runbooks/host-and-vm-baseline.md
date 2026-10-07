@@ -13,9 +13,11 @@ The initial inspection found:
 - `/dev/kvm`, KVM, and libvirt are available;
 - libvirt pool `extra` points to `/home/common/libvirt` on `/home`;
 - `extra` reported about 64.8 GiB available at inspection time;
-- an existing 4 GiB `streaming-dev` VM is paused and must remain stopped during this lab unless capacity is deliberately reassessed.
+- an existing 4 GiB `streaming-dev` VM is paused, has autostart enabled, and must remain stopped during this lab unless capacity is deliberately reassessed.
 
 These are observations, not reserved capacity. Recheck before each build because host use and free pool capacity change.
+
+This is a shared personal host, not a dedicated cluster host. The lab VMs should be started only for an exercise and shut down afterwards. Recheck `streaming-dev` autostart before host reboots or relying on the planned memory budget.
 
 ## Baseline checks
 
@@ -31,6 +33,8 @@ virsh dominfo streaming-dev
 ```
 
 Record date, available memory, swap use, load, free space, pool availability, and running VMs. Do not start the paused `streaming-dev` VM alongside the three planned VMs without re-evaluating the memory budget.
+
+Compare pool availability with free space on the underlying filesystem, and budget for disk growth as well as the configured maximum size. Swap already in use is a reason to measure current memory pressure, not by itself proof of active swapping.
 
 ## Initial VM budget
 
@@ -57,3 +61,4 @@ Do not assume Wi-Fi bridging or direct LAN attachment works for libvirt guests. 
 - Three 2 GiB VMs can be allocated without consuming the host's safety margin.
 - Guest image, network plan, API endpoint approach, and required disk capacity are documented.
 - No host networking or firewall change is required without an explicit, reversible procedure.
+- A session start/stop plan accounts for other host workloads and confirms that the cluster can resume after the VMs have been shut down.

@@ -4,6 +4,10 @@
 
 This repository teaches Kubernetes platform infrastructure through small, reproducible exercises on a resource-constrained homelab. The first target is a highly available K3s control plane. A lightweight HTTP workload demonstrates Kubernetes scheduling, service routing, and recovery.
 
+The intended production context is likely a managed cloud Kubernetes service. Operating K3s on VMs is a way to understand control-plane dependencies, failure modes, and trade-offs so that managed-service guarantees and responsibilities can be evaluated rather than assumed.
+
+Each failure exercise should record the service impact, failed dependency, detection signal, recovery owner and action, and evidence that the service recovered. For managed services, also verify the provider's explicit guarantees, exclusions, and the workload owner's remaining responsibilities.
+
 Kafka and other application platforms are out of scope for the initial checkpoints. The demo workload exists to make platform behaviour visible; it is not a separate application project.
 
 ## Initial topology
@@ -33,6 +37,7 @@ An external load balancer for the demo application is a separate exercise from t
 - Workloads already running may continue during control-plane disruption, but scheduling and reconciliation are impaired.
 - Replicated Pods can recover from an individual Pod or node failure only when sufficient healthy nodes and resources remain and the workload is configured with appropriate replicas and placement.
 - All VMs share one physical host, power source, storage device, and host network. Physical-host failure takes down the entire lab.
+- The physical host serves other personal workloads; lab VMs run on demand and must not be assumed to remain available between sessions.
 - This is a learning environment, not a production service or a production availability claim.
 
 ## Resource and ownership boundaries

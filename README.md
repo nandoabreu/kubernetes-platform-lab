@@ -22,6 +22,8 @@ libvirt host
 
 The three VMs share one physical host and are not independent physical failure domains. This lab demonstrates node-level control-plane and workload behaviour, not host-level disaster tolerance.
 
+The host is also used for other work, so the lab VMs run on demand rather than continuously. The exercises aim to explain the mechanisms and operational decisions behind Kubernetes, including capabilities that a managed cloud service may provide in a future production environment.
+
 ## Repository layout
 
 ```text
