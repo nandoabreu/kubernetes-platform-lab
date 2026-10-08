@@ -34,6 +34,6 @@ Checkpoint order may be refined as practical work reveals dependencies. Do not a
 
 ## Current focus
 
-Start with Checkpoint 0. Confirm actual host and pool capacity, guest OS/image, networking, the stable API endpoint design, and the available memory budget before building the cluster. The host has three VMs planned at 2 GiB each, but host-level resource pressure must be measured during the lab.
+Checkpoint 0 was validated on 2026-10-08: dated host and storage budgets are recorded, the guest image checksum is verified, Terraform provisions three on-demand libvirt VMs with stable addresses, and all three passed DHCP, graceful shutdown, and restart checks. The next focus is Checkpoint 1: form the three-server K3s cluster and settle the stable Kubernetes API endpoint design before installation.
 
 After the initial cluster and recovery exercises, relate each component to a managed cloud Kubernetes service: identify what the provider operates, what remains the workload owner's responsibility, and which availability, backup, networking, security, observability, and cost assumptions still need verification. Do not add cloud resources to the initial lab just to make this comparison.

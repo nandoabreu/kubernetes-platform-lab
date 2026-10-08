@@ -29,6 +29,14 @@ The existing `streaming-dev` VM was paused with 4 GiB configured and autostart e
 
 The planned 36 GiB maximum capacity for three sparse VM disks leaves 14.33 GiB below the snapshot's filesystem-available value, before accounting for the image copy or unrelated host writes. Maintain at least 10 GiB of filesystem headroom and remeasure after image download and VM creation; sparse disks can grow toward their configured maximum.
 
+## Checkpoint 0 completion snapshot
+
+The completion snapshot was recorded on 2026-10-08 at 14:18 +01:00 with all three lab VMs running and `streaming-dev` shut off with autostart disabled. The host reported 8.4 GiB RAM available, 3.1 GiB of 4 GiB swap used, 8 logical CPUs, and load averages of 1.02, 0.76, and 0.47.
+
+The `/home` ext4 filesystem had 201.56 GiB total, 142.61 GiB used, and 48.64 GiB available. After pool refresh, libvirt reported `extra` at 201.56 GiB capacity, 142.61 GiB allocation, and 58.95 GiB available; the approximately 10.3 GiB difference remains the ext4 reserved-block allowance, so the budget uses `df`'s available value. The three sparse root disks have 36 GiB total virtual capacity, leaving a conservative 12.64 GiB against that available value, above the 10 GiB headroom floor. The pool directory used 5.0 GiB.
+
+All three nodes obtained their reserved DHCP addresses (`k3s-1` at `10.77.0.11`, `k3s-2` at `10.77.0.12`, and `k3s-3` at `10.77.0.13`). The owner gracefully shut down and restarted the nodes; the same addresses were present after restart. ACPI is enabled on the domains so guest poweroff completes and libvirt reports `shut off`.
+
 This is a shared personal host, not a dedicated cluster host. The lab VMs should be started only for an exercise and shut down afterwards. Recheck `streaming-dev` autostart before host reboots or relying on the planned memory budget.
 
 ## Baseline checks
@@ -78,3 +86,4 @@ Do not assume Wi-Fi bridging or direct LAN attachment works for libvirt guests. 
 - A session start/stop plan accounts for other host workloads and confirms that the cluster can resume after the VMs have been shut down.
 - A dated status snapshot records RAM and disk headroom and explains any difference between libvirt pool availability and filesystem availability.
 - The selected guest image and SHA-256 checksum, lab network, and stable address reservations are recorded.
+- All three VMs have booted, received their reserved addresses, and retained those addresses through graceful shutdown and restart.
