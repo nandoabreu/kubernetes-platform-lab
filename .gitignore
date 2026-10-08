@@ -1,0 +1,21 @@
+# Terraform local state, plans, and provider cache
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local VM images and generated disks
+*.qcow
+*.qcow2
+*.img
+*.iso

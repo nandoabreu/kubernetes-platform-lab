@@ -1,0 +1,7 @@
+#cloud-config
+ssh_pwauth: false
+disable_root: true
+users:
+  - default
+ssh_authorized_keys:
+  - ${jsonencode(ssh_public_key)}
