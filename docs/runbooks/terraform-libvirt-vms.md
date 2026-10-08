@@ -75,4 +75,12 @@ virsh list --all
 
 ## Cleanup
 
-Inspect `terraform -chdir=terraform plan -destroy` before removing the lab. Destroying the Terraform-managed resources deletes the lab domains, their QCOW2 overlays, the imported base-image volume, cloud-init volumes, and NAT network from `/home/common/libvirt`. It reclaims the physical blocks those managed volumes used, but leaves the source image in `.cache/images`, the `extra` pool itself, the existing `streaming-dev` VM, and the `default` network untouched.
+Run cleanup from the same working directory and local Terraform state used to provision the lab; the state file is ignored by Git. Gracefully shut down every running guest first, resume any paused guest before shutting it down, and confirm `virsh list --all` shows the lab VMs as shut off. Then create and inspect a saved destroy plan before applying that exact plan:
+
+```sh
+terraform -chdir=terraform plan -destroy -out=terraform.destroy.tfplan
+terraform -chdir=terraform show terraform.destroy.tfplan
+terraform -chdir=terraform apply terraform.destroy.tfplan
+```
+
+Destroying the Terraform-managed resources deletes the lab domains, their QCOW2 overlays, the imported base-image volume, cloud-init volumes, and NAT network from `/home/common/libvirt`. It reclaims the physical blocks those managed volumes used, but leaves the source image at the path configured by `cloud_image_path` (currently `/home/common/cache/libvirt/noble-server-cloudimg-amd64.img`), the `extra` pool itself, the existing `streaming-dev` VM, and the `default` network untouched.

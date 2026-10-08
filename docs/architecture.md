@@ -46,7 +46,7 @@ An external load balancer for the demo application is a separate exercise from t
 ## Resource and ownership boundaries
 
 - The host and libvirt own the physical environment and storage pools.
-- Terraform or another explicitly selected provisioner may own VM lifecycle in a later checkpoint; it must not also own Kubernetes workloads.
+- Terraform owns the lab NAT network, VM domains, and VM disks; it does not configure the host OS or manage Kubernetes workloads.
 - K3s owns cluster control-plane and node services.
 - Kubernetes manifests or Helm own demo workloads and their in-cluster resources.
 - Local VM state, generated credentials, and secrets remain outside Git.

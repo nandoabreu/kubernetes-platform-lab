@@ -19,6 +19,13 @@ status:
 	@printf '\n== Pool current use ==\n'
 	@df -hT /home
 	@du -sh /home/common/libvirt
+	@set -- /home/common/libvirt/k3s*; if [ -e "$$1" ]; then ls -lh "$$@"; else printf 'No k3s files found in pool.\n'; fi
 	@printf '\n== Libvirt networks and VMs ==\n'
 	@virsh net-list --all
 	@virsh list --all
+	@printf '\n== VM domain details ==\n'
+	@for domain in $$(virsh list --all --name); do \
+	  [ -n "$$domain" ] || continue; \
+	  printf '\n-- %s --\n' "$$domain"; \
+	  virsh dominfo "$$domain"; \
+	done
