@@ -64,6 +64,8 @@ virsh console k3s-1
 
 Replace the domain name to connect to another node. Press `Ctrl+]` to detach from the console without stopping the VM.
 
+The domains expose ACPI so Ubuntu can process a graceful power-button request. `virsh shutdown` only submits that request; wait for `virsh domstate` or `virsh list --all` to report `shut off` before assuming the host memory has been released.
+
 Shut down guests gracefully after each session:
 
 ```sh
@@ -72,6 +74,8 @@ virsh shutdown k3s-2
 virsh shutdown k3s-3
 virsh list --all
 ```
+
+If the guest reaches its poweroff target but remains `running` in libvirt, inspect the serial console and check ACPI configuration before retrying. `virsh destroy` forcibly stops a domain without deleting its definition or disks; reserve it for a guest that is already halted or otherwise cannot complete a graceful shutdown.
 
 ## Cleanup
 

@@ -141,6 +141,10 @@ resource "libvirt_domain" "node" {
     ]
   }
 
+  features = {
+    acpi = true
+  }
+
   devices = {
     serials = [
       {
