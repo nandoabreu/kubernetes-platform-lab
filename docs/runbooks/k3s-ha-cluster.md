@@ -154,9 +154,14 @@ Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers an
 Once HAProxy is installed and validated, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint. Then review the join play's `server` URL and execute it against the remaining servers one at a time:
 
 ```sh
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.12 true
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.13 true
+ansible -i ansible/inventory/hosts.yml k3s_joiners -m ping --limit 'k3s-2,k3s-3'
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --list-hosts --limit 'k3s-2,k3s-3'
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --limit 'k3s-2,k3s-3'
 ```
+
+Both SSH checks and both Ansible pings must pass before running the join play. The `k3s_initial` inventory group contains only `k3s-1`; do not combine it with `--limit k3s-2` or `--limit k3s-3`, because that intersection intentionally matches no hosts. If a recreated VM has a new host key, return to the [Terraform VM runbook](terraform-libvirt-vms.md#ssh-access-after-vm-recreation), review and accept it interactively, then repeat these batch checks.
 
 The host-side kubeconfig endpoint can be changed and tested with:
 

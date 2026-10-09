@@ -84,10 +84,13 @@ ssh-add -l
 LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
 ```
 
-If a different key was provisioned, substitute its private-key path. Ansible can also be given that path explicitly:
+If a different key was provisioned, substitute its private-key path. Repeat the interactive SSH connection for every recreated VM so each new host key is reviewed and accepted, then verify all three inventory hosts in batch mode. Ansible can also be given the private-key path explicitly:
 
 ```sh
-ansible -i ansible/inventory/hosts.yml k3s_initial -m ping --limit k3s-1 --private-key "$HOME/.ssh/id_ed25519"
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.12 true
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.13 true
+ansible -i ansible/inventory/hosts.yml k3s_cluster -m ping --private-key "$HOME/.ssh/id_ed25519"
 ```
 
 Never put the private key in Terraform variables or Git. After SSH succeeds for the required hosts, continue with the [K3s cluster build runbook](k3s-ha-cluster.md).
