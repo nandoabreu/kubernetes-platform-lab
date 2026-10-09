@@ -1,19 +1,19 @@
-# K3s HA Cluster: Build and Verification
+# K3s HA Cluster: Build and Bootstrap
 
 ## Status
 
-This is the prepared procedure for Roadmap Checkpoint 1; it has not yet been run against the VMs. The owner will review and execute the commands when ready. VM-to-VM traffic and host-to-VM TCP port 6443 were manually verified with a temporary HTTP server, and UFW is inactive on all three guests; K3s and etcd are not installed yet.
+The build portion of Checkpoint 1 was completed on 2026-10-09. Ansible installed K3s `v1.37.1+k3s1` on all three VMs; all nodes reported `Ready`, the API `/readyz` checks passed through HAProxy at `10.77.0.1:6443`, and HAProxy logs showed connections reaching all three backends. The failure, resource, and full-restart exercises are in the separate [K3s HA validation runbook](k3s-ha-validation.md).
 
 ## Decisions
 
 - The guests run Ubuntu Server 24.04.4 LTS, use the fixed addresses `10.77.0.11` through `10.77.0.13`, and are provisioned by Terraform.
 - Pin K3s to `v1.37.1+k3s1` on every server; this release bundles Kubernetes `v1.37.1` and embedded etcd `v3.7.1-k3s3`.
 - Use K3s embedded etcd and its default Flannel VXLAN backend and packaged components; do not install etcd separately.
-- Use `10.77.0.1` as the future stable API endpoint behind HAProxy. Ansible passes it as a parameter and includes it in the API server certificate's Subject Alternative Names (SANs).
-- Bootstrap `k3s-1` first and validate it directly at `10.77.0.11:6443`. Install HAProxy on the libvirt host only after that validation and a separate review; join `k3s-2` and `k3s-3` through `10.77.0.1:6443` afterward.
-- Use Ansible with all three hosts in inventory. The initial execution is limited to `k3s-1`; joining servers is a separate play and is run only after the HAProxy endpoint is ready.
+- Use `10.77.0.1:6443` as the stable API endpoint behind HAProxy. Ansible passes it as a parameter and includes it in the API server certificate's Subject Alternative Names (SANs).
+- Bootstrap `k3s-1` first and validate it directly at `10.77.0.11:6443`; after HAProxy is installed and validated, join `k3s-2` and `k3s-3` through `10.77.0.1:6443`.
+- Use Ansible with all three hosts in inventory. Bootstrap and join are separate plays; use `--limit` to run the appropriate stage, and `serial: 1` joins servers sequentially.
 
-Kubernetes uses TLS for API and control-plane communication. K3s creates and manages the cluster certificate authorities and the certificates used by API, nodes, and embedded etcd. The `tls-san` setting adds the future API endpoint IP to the API server certificate identity; it is not a custom CA and does not replace K3s-managed node or etcd certificates. The generated administrative kubeconfig and join token are credentials and must remain outside Git.
+Kubernetes uses TLS for API and control-plane communication. K3s creates and manages the cluster certificate authorities and the certificates used by API, nodes, and embedded etcd. The `tls-san` setting adds the stable API endpoint IP to the API server certificate identity; it is not a custom CA and does not replace K3s-managed node or etcd certificates. The generated administrative kubeconfig and join token are credentials and must remain outside Git.
 
 Flannel is K3s's default Container Network Interface (CNI), which gives Pods network connectivity across nodes. Its VXLAN backend encapsulates Pod-network packets inside UDP packets between VM addresses; it is separate from the Kubernetes API and etcd traffic. K3s also deploys packaged components by default, including CoreDNS, Traefik, ServiceLB, local-path storage, and metrics-server. ServiceLB exposes Kubernetes `LoadBalancer` Services; it is not the stable endpoint for the Kubernetes API. This checkpoint keeps the defaults so the lab starts with the standard K3s networking and system components.
 
@@ -71,8 +71,8 @@ The play creates `/etc/rancher/k3s/config.yaml` with `cluster-init: true` and th
 Check the service and API locally on the guest:
 
 ```sh
-ssh ubuntu@10.77.0.11 'sudo systemctl is-active k3s && sudo k3s --version && sudo k3s kubectl get nodes'
-ssh ubuntu@10.77.0.11 "sudo k3s kubectl get --raw='/readyz?verbose'"
+LC_ALL=C ssh ubuntu@10.77.0.11 "sudo systemctl is-active k3s \; sudo /usr/local/bin/k3s --version \; sudo /usr/local/bin/k3s kubectl get nodes"
+LC_ALL=C ssh ubuntu@10.77.0.11 "sudo /usr/local/bin/k3s kubectl get --raw='/readyz?verbose'"
 ```
 
 `kubectl` is the Kubernetes command-line client. It sends HTTPS requests to the API server using the endpoint and credentials in a kubeconfig; it can run on the host or another authorised workstation and does not need to run inside the cluster. Running it on the host here proves host-to-API connectivity and certificate validation through the same route an administrator will use. In enterprise environments, operators commonly run `kubectl` from their workstation, a controlled bastion, or CI; identities and RBAC are usually more restricted than this lab's administrator kubeconfig.
@@ -83,8 +83,9 @@ To verify the API from the host with certificate validation, copy the administra
 set -e
 umask 077
 install -d -m 0700 "$HOME/.kube"
-ssh ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
+touch "$HOME/.kube/k3s-lab.yaml"
 chmod 0600 "$HOME/.kube/k3s-lab.yaml"
+ssh ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.11:6443
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
@@ -157,17 +158,7 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
 
 The join play reads `/var/lib/rancher/k3s/server/node-token` from `k3s-1` over SSH and keeps the token out of task output. Each joining server uses the same pinned K3s version, the stable API URL, and the API endpoint SAN; the play uses `serial: 1` so only one server joins at a time.
 
-After confirming all three nodes are healthy and the etcd-backed API is ready, stop and restore one server at a time from the host. Three etcd servers require a quorum of two: one server can fail while the other two continue, but two failures leave only one vote and etcd cannot commit updates. Kubernetes API operations that need the datastore then fail, and controllers cannot reconcile cluster state; already-running Pods may continue temporarily, but recovery and scheduling are impaired. For each node, wait until libvirt reports it shut off, verify API readiness through HAProxy, restart it, and wait until it returns to `Ready` before testing the next node:
-
-```sh
-sudo virsh shutdown k3s-1
-sudo virsh domstate k3s-1
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
-sudo virsh start k3s-1
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes --watch
-```
-
-Repeat with `k3s-2` and `k3s-3`, never stopping two servers together. Record the observed API/readiness impact and recovery evidence for each exercise.
+After all three nodes report `Ready` and API operations succeed through the stable endpoint, continue with the [K3s HA validation runbook](k3s-ha-validation.md) for quorum checks, one-node failure/recovery tests, resource measurements, and a full lab restart.
 
 ## Build sequence
 
@@ -178,27 +169,18 @@ Repeat with `k3s-2` and `k3s-3`, never stopping two servers together. Record the
 5. Review, install, and validate the host HAProxy endpoint. Do this before joining additional servers.
 6. Join `k3s-2` and `k3s-3` sequentially through the stable endpoint using the same K3s version and server configuration.
 7. Verify all three nodes, control-plane availability, datastore health, and access through the stable API endpoint.
-8. Stop one server at a time. Confirm the remaining two retain quorum and the API endpoint remains usable; restore it before testing another server.
-9. Record observed memory, swap, CPU, disk, recovery behaviour, and any limits.
-10. After restoring all three healthy servers, shut down the lab VMs when the exercise ends. On the next session, start them again and verify node readiness, etcd membership, and API access before continuing.
+8. Continue to the [K3s HA validation runbook](k3s-ha-validation.md) for failure, resource, and full-restart exercises.
 
-The K3s version, VM addressing, and endpoint address are selected. HAProxy implementation and the final etcd membership/failover checks remain gated on the single-server validation and owner review.
+The build procedure has been exercised through formation of the three-server cluster and stable API endpoint. Checkpoint 1 is complete only after the validation runbook's remaining evidence is recorded.
 
 ## Verification checklist
 
-- [ ] The initial `k3s-1` node reports `Ready` and the API is reachable from the host.
-- [ ] The API TLS certificate validates for the future endpoint address `10.77.0.1`.
-- [ ] All three Kubernetes nodes report `Ready`.
-- [ ] The cluster reports three healthy embedded etcd members and quorum.
-- [ ] API operations succeed through the stable endpoint.
-- [ ] Stopping one server leaves two members, quorum, and API access.
-- [ ] Restarting the stopped server returns it to a healthy member state.
-- [ ] Host memory, swap, and `extra` pool usage remain within the agreed budget.
-- [ ] After an intentional full lab shutdown and restart, all three servers and the stable API endpoint return to a healthy state.
+- [x] The initial `k3s-1` node reports `Ready` and the API is reachable from the host.
+- [x] The API TLS certificate validates for the stable endpoint address `10.77.0.1`.
+- [x] All three Kubernetes nodes report `Ready`.
+- [x] API operations succeed through the stable endpoint.
 - [ ] No secret, token, kubeconfig credential, or generated key was committed.
 
 ## Recovery and cleanup
-
-Do not test two simultaneous server failures in the initial exercise. If quorum is lost, stop disruptive changes and follow a version-specific recovery procedure; do not improvise etcd membership changes.
 
 VM deletion, etcd snapshot/restore, and full rebuild procedures are not yet defined. Add and test them before calling the cluster reproducible or using it for important data.

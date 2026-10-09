@@ -34,6 +34,6 @@ Checkpoint order may be refined as practical work reveals dependencies. Do not a
 
 ## Current focus
 
-Checkpoint 0 was validated on 2026-10-08: dated host and storage budgets are recorded, the guest image checksum is verified, Terraform provisions three on-demand libvirt VMs with stable addresses, and all three passed DHCP, graceful shutdown, and restart checks. The focus is Checkpoint 1: install K3s `v1.37.1+k3s1` with Ansible, bootstrap and validate `k3s-1`, then review and install the selected host HAProxy endpoint before joining `k3s-2` and `k3s-3`.
+Checkpoint 0 was validated on 2026-10-08: dated host and storage budgets are recorded, the guest image checksum is verified, Terraform provisions three on-demand libvirt VMs with stable addresses, and all three passed DHCP, graceful shutdown, and restart checks. Checkpoint 1's three-server K3s cluster, host HAProxy endpoint, etcd membership, individual node failure/recovery exercises, and full lab restart were validated on 2026-10-09. The [K3s HA validation runbook](runbooks/k3s-ha-validation.md) records the evidence. The next focus is Checkpoint 2: deploy a multi-replica HTTP demo behind a Kubernetes Service.
 
 After the initial cluster and recovery exercises, relate each component to a managed cloud Kubernetes service: identify what the provider operates, what remains the workload owner's responsibility, and which availability, backup, networking, security, observability, and cost assumptions still need verification. Do not add cloud resources to the initial lab just to make this comparison.
