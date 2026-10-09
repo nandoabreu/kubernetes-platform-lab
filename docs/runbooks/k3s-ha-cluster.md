@@ -54,7 +54,7 @@ ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --synt
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --list-hosts --limit k3s-1
 # See the Terraform VM runbook if recreated VMs cause host-key or ssh_askpass errors.
 LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
-ansible -i ansible/inventory/hosts.yml k3s_initial -m ping --limit k3s-1
+ansible -i ansible/inventory/hosts.yml k3s-1 -m ping
 ```
 
 The host list should show `k3s-1` for the bootstrap play and no hosts for the join play. The SSH check must succeed before the Ansible ping. If a deliberately recreated VM causes a host-key error, remove its stale host-key entry as described in the [Terraform VM runbook](terraform-libvirt-vms.md#ssh-access-after-vm-recreation); for an ordinary update, investigate rather than removing it. If Ansible reports `ssh_askpass`, load the matching private key into `ssh-agent` as described there, then retry. Keep host-key checking enabled and never add the private key to Git. The Ansible ping checks SSH and Python access without changing the guest.
@@ -92,14 +92,15 @@ umask 077
 install -d -m 0700 "$HOME/.kube"
 touch "$HOME/.kube/k3s-lab.yaml"
 chmod 0600 "$HOME/.kube/k3s-lab.yaml"
-LC_ALL=C ssh ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
+LC_ALL=C ssh -n ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.11:6443
+test "$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config view --minify -o jsonpath='{.clusters[0].cluster.server}')" = 'https://10.77.0.11:6443'
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
 LOCAL
 ```
 
-The commands run in a child Bash process so `set -e` and the restrictive `umask` do not change or terminate the interactive shell. The SSH command opens a short-lived non-interactive connection and closes it after copying the file. The kubeconfig contains administrator client credentials. Keep it under `$HOME/.kube`, do not display it, and do not add it to Git. Confirm the API response includes the ready checks and that the API certificate validates when reached at `10.77.0.11`.
+The commands run in a child Bash process so `set -e` and the restrictive `umask` do not change or terminate the interactive shell. The SSH `-n` option prevents SSH from consuming the remaining heredoc commands from the child process's standard input. The connection closes after copying the file, and the endpoint assertion stops the sequence if the kubeconfig still points elsewhere. The kubeconfig contains administrator client credentials. Keep it under `$HOME/.kube`, do not display it, and do not add it to Git. Confirm the API response includes the ready checks and that the API certificate validates when reached at `10.77.0.11`.
 
 ## Stable endpoint and remaining servers
 
@@ -150,20 +151,26 @@ sudo tail -f /var/log/haproxy.log
 
 Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers and does not depend on an in-cluster workload. `balance roundrobin` distributes new TCP connections across healthy backends. The `check` settings test whether each backend accepts TCP connections; after two failed checks HAProxy marks it down, and after two successful checks it marks it up. These layer-4 checks detect an unavailable API listener but do not validate K3s readiness or etcd health; verify readiness separately with `kubectl`. `option tcplog` with `option logasap` logs the backend/server selected for each new connection as soon as possible, while `option log-health-checks` records backend state transitions. The package configures rsyslog to write HAProxy messages to `/var/log/haproxy.log`; follow that file while nodes are added or stopped. As this is TLS pass-through, HAProxy will not see Kubernetes HTTP requests or response bodies; a long-lived client connection can also carry multiple API requests, so logs do not promise one backend choice per `kubectl` command.
 
-Once HAProxy is installed and validated, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint. Then review the join play's `server` URL and execute it against the remaining servers one at a time:
+Once HAProxy is installed, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint while `k3s-1` is its only healthy backend:
 
 ```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.1:6443
+test "$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config view --minify -o jsonpath='{.clusters[0].cluster.server}')" = 'https://10.77.0.1:6443'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
+```
+
+Only after those checks pass, validate SSH and Ansible access to both joiners. Then review the play's selected hosts and execute it; `serial: 1` joins one server at a time:
+
+```sh
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.12 true
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.13 true
+ansible -i ansible/inventory/hosts.yml 'k3s-2,k3s-3' -m ping
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --list-hosts --limit 'k3s-2,k3s-3'
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --limit 'k3s-2,k3s-3'
 ```
 
-The host-side kubeconfig endpoint can be changed and tested with:
-
-```sh
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.1:6443
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
-```
+Both SSH checks and both Ansible pings must pass before running the join play. The ad-hoc ping command names `k3s-2` and `k3s-3` directly; `k3s_initial` is not used because that inventory group contains only `k3s-1`. If a recreated VM has a new host key, return to the [Terraform VM runbook](terraform-libvirt-vms.md#ssh-access-after-vm-recreation), review and accept it interactively, then repeat these batch checks.
 
 The join play reads `/var/lib/rancher/k3s/server/node-token` from `k3s-1` over SSH and keeps the token out of task output. Each joining server uses the same pinned K3s version, the stable API URL, and the API endpoint SAN; the play uses `serial: 1` so only one server joins at a time.
 
