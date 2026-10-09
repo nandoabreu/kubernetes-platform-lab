@@ -57,12 +57,12 @@ flowchart LR
         flannel2 --- pod2
     end
 
-    flannel1 == "UDP 8472 over 10.77.0.0/24<br/>encapsulated Pod traffic" ==> flannel2
+    flannel1 ==>|"UDP 8472 over 10.77.0.0/24<br/>encapsulated Pod traffic"| flannel2
 ```
 
 The diagram shows one cross-node path. K3s configures the same full-mesh VXLAN relationship among all three servers. The libvirt network routes VM traffic and guest egress; Flannel provides the overlay used for Pod-to-Pod traffic across nodes. A Kubernetes Service adds another virtual addressing and routing layer, implemented by cluster networking rather than by libvirt or HAProxy.
 
-The initial demo is a small HTTP responder deployed with multiple replicas. Responses should identify the serving Pod and, where practical, its node. A Kubernetes Service provides a stable in-cluster address and routes connections to ready Pods. The scheduler places Pods on nodes; the Service does not place workloads or guarantee that replicas occupy distinct nodes.
+The planned Checkpoint 2 demo is a small HTTP responder deployed with multiple replicas. Responses will identify the serving Pod and, where practical, its node. A Kubernetes Service will provide a stable in-cluster address and route connections to ready Pods. The scheduler places Pods on nodes; the Service does not place workloads or guarantee that replicas occupy distinct nodes.
 
 An external load balancer for the demo application is a separate exercise from the stable API endpoint. Begin with in-cluster Service routing and add external access only when its networking model is selected and documented.
 

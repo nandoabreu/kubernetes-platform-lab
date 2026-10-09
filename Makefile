@@ -16,7 +16,7 @@ help:
 
 requirements:
 	@missing=0; \
-	for command in git make terraform ansible-playbook kubectl virsh; do \
+	for command in git make terraform ansible-playbook kubectl virsh qemu-img; do \
 	  if command -v "$$command" >/dev/null 2>&1; then \
 	    printf 'found:   %s\n' "$$command"; \
 	  else \

@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- The tested environment is a Linux x86-64 host with 16 GiB RAM, KVM/libvirt, and an Intel CPU with virtualisation enabled. The architecture describes the environment that was exercised; other architectures require compatible cloud images and provider support and have not been validated by this project.
+- The tested environment is an Ubuntu 22.04 x86-64 host with 16 GiB RAM, KVM/libvirt, and an Intel CPU with virtualisation enabled. Host package, UFW, systemd, HAProxy, and logging commands follow Ubuntu conventions. Other Linux distributions and architectures require compatible packages, cloud images, and provider support and have not been validated by this project.
 - The host needs Git, Make, Terraform CLI `>= 1.5.0, < 2.0.0`, and an active libvirt storage pool with enough underlying filesystem capacity for the cloud image and three sparse disks that can grow to 12 GiB each. Install Terraform using the [official instructions](https://developer.hashicorp.com/terraform/install).
 - The host is also the Ansible controller and needs `ansible-core` (`sudo apt install ansible-core`), SSH access to the Ubuntu guests, and `kubectl` for host-side API checks; use the [official kubectl installation guide](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/) and keep the client within one Kubernetes minor version of the cluster.
 - Install HAProxy on the host only at the Checkpoint 1 endpoint stage, after validating the first K3s server (`sudo apt install haproxy`). The host UFW policy denies incoming traffic by default, so the HAProxy step must add a narrowly scoped rule for TCP `6443` from `10.77.0.0/24` to `10.77.0.1`.

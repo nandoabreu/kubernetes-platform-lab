@@ -38,24 +38,31 @@ You need Git, Make, Terraform, Ansible Core, `kubectl`, a working system libvirt
 
 The commands below take the tested path through VM provisioning. Review every plan and command before applying it to your host.
 
-1. Clone the repository and inspect host capacity:
+1. Clone the repository and check the required command-line tools:
 
 ```sh
 git clone https://github.com/nandoabreu/kubernetes-platform-lab.git
 cd kubernetes-platform-lab
 make requirements
-make status
 ```
 
-2. Download an Ubuntu Server 24.04 cloud image, verify its SHA-256 checksum against Ubuntu's published manifest, and copy the example inputs:
+2. Download the Ubuntu Server 24.04 cloud image and its `SHA256SUMS` file from the [official Ubuntu image directory](https://cloud-images.ubuntu.com/noble/current/), then verify the image and inspect its virtual capacity:
 
 ```sh
+sha256sum --ignore-missing --check SHA256SUMS
+qemu-img info --output=json noble-server-cloudimg-amd64.img
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
 
-3. Edit `terraform/terraform.tfvars` so `cloud_image_path`, `storage_pool`, and `ssh_public_key_path` match your host. The tested host uses a pool named `extra` because its default pool did not have enough free space; use any existing pool with suitable capacity, or follow the libvirt documentation to create one.
+3. Edit `terraform/terraform.tfvars` so `cloud_image_path`, `base_image_capacity_gib`, `storage_pool`, and `ssh_public_key_path` match your host. Derive `base_image_capacity_gib` from the virtual size reported by `qemu-img`, not the downloaded file size. The tested host uses a pool named `extra` because its default pool did not have enough free space; use any existing pool with suitable capacity, or follow the libvirt documentation to create one.
 
-4. Initialise, validate, review, and apply the Terraform plan:
+4. Inspect host capacity using the pool and storage paths you selected. The Makefile defaults describe the original test host; override them when your host differs:
+
+```sh
+make status LIBVIRT_POOL=default LIBVIRT_VOLUME_DIR=/var/lib/libvirt/images HOST_STORAGE_PATH=/var
+```
+
+5. Initialise, validate, review, and apply the Terraform plan:
 
 ```sh
 terraform -chdir=terraform init
@@ -67,7 +74,7 @@ terraform -chdir=terraform apply terraform.tfplan
 
 This completes the `v0.0.1` boundary. Terraform deliberately leaves the VMs stopped. Continue with the [Terraform VM runbook](docs/runbooks/terraform-libvirt-vms.md#validate-and-operate) to start and validate them.
 
-5. To reach the `v0.1.0` boundary, follow the [K3s cluster build runbook](docs/runbooks/k3s-ha-cluster.md), then perform the [failure and restart validation](docs/runbooks/k3s-ha-validation.md). The staged procedure matters: the first server is validated before HAProxy is configured and the other two servers join.
+6. To reach the `v0.1.0` boundary, follow the [K3s cluster build runbook](docs/runbooks/k3s-ha-cluster.md), then perform the [failure and restart validation](docs/runbooks/k3s-ha-validation.md). The staged procedure matters: the first server is validated before HAProxy is configured and the other two servers join.
 
 ## Documentation
 
