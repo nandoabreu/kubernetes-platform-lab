@@ -103,13 +103,10 @@ sudo ufw allow in from 10.77.0.0/24 to 10.77.0.1 port 6443 proto tcp comment 'K3
 sudo ufw status numbered
 ```
 
-Configure the listener in TCP mode so HAProxy forwards TLS unchanged to the Kubernetes API servers. Add the following settings to the matching sections of `/etc/haproxy/haproxy.cfg`; retain the package's other global settings:
+Do not replace the package configuration. It contains useful global settings for the chroot, unprivileged `haproxy` user, admin stats socket, TLS defaults, and existing HTTP defaults. The packaged systemd service loads only `/etc/haproxy/haproxy.cfg`; it does not automatically load an apt-style `conf.d` directory. Back up the file, then append a named TCP defaults section and the API frontend/backend below. This keeps the existing HTTP defaults for any other proxy sections.
 
 ```haproxy
-global
-    log /dev/log local0
-
-defaults
+defaults k3s_api_defaults
     mode tcp
     log global
     option tcplog
@@ -118,12 +115,11 @@ defaults
     timeout client 1h
     timeout server 1h
 
-frontend k3s_api
+frontend k3s_api from k3s_api_defaults
     bind 10.77.0.1:6443
     default_backend k3s_api_servers
 
-backend k3s_api_servers
-    mode tcp
+backend k3s_api_servers from k3s_api_defaults
     balance roundrobin
     option log-health-checks
     server k3s-1 10.77.0.11:6443 check inter 2s fall 2 rise 2
@@ -131,7 +127,17 @@ backend k3s_api_servers
     server k3s-3 10.77.0.13:6443 check inter 2s fall 2 rise 2
 ```
 
-Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers and does not depend on an in-cluster workload. `balance roundrobin` distributes new TCP connections across healthy backends. The `check` settings test whether each backend accepts TCP connections; after two failed checks HAProxy marks it down, and after two successful checks it marks it up. These layer-4 checks detect an unavailable API listener but do not validate K3s readiness or etcd health; verify readiness separately with `kubectl`. `option tcplog` with `option logasap` logs the backend/server selected for each new connection as soon as possible, while `option log-health-checks` records backend state transitions. Verify that the host's syslog route captures HAProxy's `local0` messages and follow that log while nodes are added or stopped. As this is TLS pass-through, HAProxy will not see Kubernetes HTTP requests or response bodies; a long-lived client connection can also carry multiple API requests, so logs do not promise one backend choice per `kubectl` command.
+Back up the package file, append the three HAProxy sections above with `sudoedit`, validate the result, and reload HAProxy:
+
+```sh
+sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak
+sudoedit /etc/haproxy/haproxy.cfg
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg
+sudo systemctl reload haproxy
+sudo tail -f /var/log/haproxy.log
+```
+
+Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers and does not depend on an in-cluster workload. `balance roundrobin` distributes new TCP connections across healthy backends. The `check` settings test whether each backend accepts TCP connections; after two failed checks HAProxy marks it down, and after two successful checks it marks it up. These layer-4 checks detect an unavailable API listener but do not validate K3s readiness or etcd health; verify readiness separately with `kubectl`. `option tcplog` with `option logasap` logs the backend/server selected for each new connection as soon as possible, while `option log-health-checks` records backend state transitions. The package configures rsyslog to write HAProxy messages to `/var/log/haproxy.log`; follow that file while nodes are added or stopped. As this is TLS pass-through, HAProxy will not see Kubernetes HTTP requests or response bodies; a long-lived client connection can also carry multiple API requests, so logs do not promise one backend choice per `kubectl` command.
 
 Once HAProxy is installed and validated, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint. Then review the join play's `server` URL and execute it against the remaining servers one at a time:
 
