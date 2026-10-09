@@ -2,25 +2,25 @@
 
 ## Purpose and scope
 
-Terraform manages the lab-only NAT network, three VM domains, and their disks. The existing `extra` storage pool and `default` libvirt network remain untouched. New VM domains and the lab network do not autostart with the host. Terraform creates VMs stopped and ignores later changes to their running state, leaving session start and stop operations to the operator.
+Terraform manages the lab-only NAT network, three VM domains, and their disks. The selected existing storage pool and the `default` libvirt network remain untouched. New VM domains and the lab network do not autostart with the host. Terraform creates VMs stopped and ignores later changes to their running state, leaving session start and stop operations to the operator.
 
 ## Inputs
 
 - Ubuntu Server 24.04 LTS cloud image downloaded locally and verified against its SHA-256 manifest.
-- The shared image at `/home/common/cache/libvirt/noble-server-cloudimg-amd64.img` is QCOW2 with a 3.5 GiB virtual capacity and about 596 MiB of allocated file data; its SHA-256 is `6e40c07ae715f744f84af0bec76415cc1987dd115b4b8de437818561f01a3733`.
-- `base_image_capacity_gib` sets the base image's virtual disk capacity. It is 3.5 GiB for this image, not RAM and not the 12 GiB root-disk size of each VM.
+- The image validated on the test host is Ubuntu Server 24.04 LTS `noble-server-cloudimg-amd64.img`. It is QCOW2 with a 3.5 GiB virtual capacity and about 596 MiB of allocated file data; the image used for Checkpoint 0 had SHA-256 `6e40c07ae715f744f84af0bec76415cc1987dd115b4b8de437818561f01a3733`. Ubuntu cloud images change over time, so verify the image you download against its matching published manifest rather than assuming this historical checksum applies.
+- `base_image_capacity_gib` sets the base image's virtual disk capacity. Run `qemu-img info --output=json <image>` and convert its virtual size from bytes to GiB; the validated image reports 3.5 GiB. This is not RAM or the 12 GiB root-disk size of each VM.
 - A local SSH public key; never copy the private key into this repository.
-- The `extra` pool must be active with enough physical filesystem space for image and VM disk growth.
+- The selected storage pool must be active with enough physical filesystem space for image and VM disk growth. The test host uses `extra` because its default pool did not have enough free space; use an existing suitable pool or follow the libvirt storage documentation to create one.
 - The Terraform provider connects to the local system libvirt daemon through `qemu:///system`.
 
-Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and update the image path and public-key path if needed. The local tfvars file, Terraform state, plans, provider cache, and VM images are ignored by Git.
+Download the image and matching `SHA256SUMS` file from the [official Ubuntu image directory](https://cloud-images.ubuntu.com/noble/current/). In the download directory, run `sha256sum --ignore-missing --check SHA256SUMS`, and do not continue unless the selected image reports `OK`. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and update the image path, base-image capacity, storage pool, and public-key path for your host. The local tfvars file, Terraform state, plans, provider cache, and VM images are ignored by Git.
 
 ## Review and provision
 
-From the repository root, run the following commands and inspect the plan before applying it:
+From the repository root, run the following commands and inspect the plan before applying it. Pass the pool and storage values selected for your host to `make status`; omitting them uses the original test-host defaults.
 
 ```sh
-make status
+make status LIBVIRT_POOL=default LIBVIRT_VOLUME_DIR=/var/lib/libvirt/images HOST_STORAGE_PATH=/var
 terraform -chdir=terraform init
 terraform -chdir=terraform validate
 terraform -chdir=terraform plan -out=terraform.tfplan
@@ -29,7 +29,7 @@ terraform -chdir=terraform show terraform.tfplan
 
 The plan should create one isolated NAT network, one base image volume, three sparse 12 GiB VM disks, three cloud-init volumes, and three stopped 2 GiB VM domains. It reserves `10.77.0.11` through `10.77.0.13` by DHCP using fixed MAC addresses. The existing `default` network is not changed.
 
-The VM disks use QCOW2 copy-on-write overlays with sparse allocation requested. Their 12 GiB capacity is a maximum; physical filesystem use grows as the guests write data. The imported base image consumes approximately the source image's allocated data. Use `make status` to compare actual `/home` free space with the pool's figures.
+The VM disks use QCOW2 copy-on-write overlays with sparse allocation requested. Their 12 GiB capacity is a maximum; physical filesystem use grows as the guests write data. The imported base image consumes approximately the source image's allocated data. Use `make status` with your host's storage overrides to compare actual filesystem free space with the pool's figures.
 
 Only after reviewing the complete plan, apply it with:
 
@@ -62,7 +62,7 @@ LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
 If a different key was provisioned, substitute its private-key path. Ansible can also be given that path explicitly:
 
 ```sh
-ansible k3s_initial -m ping --limit k3s-1 --private-key "$HOME/.ssh/id_ed25519"
+ansible -i ansible/inventory/hosts.yml k3s_initial -m ping --limit k3s-1 --private-key "$HOME/.ssh/id_ed25519"
 ```
 
 Never put the private key in Terraform variables or Git.
@@ -115,4 +115,4 @@ terraform -chdir=terraform show terraform.destroy.tfplan
 terraform -chdir=terraform apply terraform.destroy.tfplan
 ```
 
-Destroying the Terraform-managed resources deletes the lab domains, their QCOW2 overlays, the imported base-image volume, cloud-init volumes, and NAT network from `/home/common/libvirt`. It reclaims the physical blocks those managed volumes used, but leaves the source image at the path configured by `cloud_image_path` (currently `/home/common/cache/libvirt/noble-server-cloudimg-amd64.img`), the `extra` pool itself, the existing `streaming-dev` VM, and the `default` network untouched.
+Destroying the Terraform-managed resources deletes the lab domains, their QCOW2 overlays, the imported base-image volume, cloud-init volumes, and NAT network from the selected storage pool. It reclaims the physical blocks those managed volumes used, but leaves the source image configured by `cloud_image_path`, the storage pool itself, unrelated VMs, and the `default` network untouched.

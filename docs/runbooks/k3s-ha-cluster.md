@@ -44,18 +44,17 @@ The `/etc/rancher/k3s` path is K3s's conventional Linux configuration directory.
 
 ## Prepare and review
 
-Run these commands from the repository root on the libvirt host; the first command enters `ansible/`. Ansible Core, `kubectl`, SSH access as `ubuntu`, and passwordless sudo for that SSH user are required.
+Run these commands from the repository root on the libvirt host. Ansible Core, `kubectl`, SSH access as `ubuntu`, and passwordless sudo for that SSH user are required.
 
 ```sh
-cd ansible
 ansible --version
 kubectl version --client
-ansible-inventory --graph
-ansible-playbook playbooks/k3s.yml --syntax-check
-ansible-playbook playbooks/k3s.yml --list-hosts --limit k3s-1
+ansible-inventory -i ansible/inventory/hosts.yml --graph
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --syntax-check
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --list-hosts --limit k3s-1
 # See the Terraform VM runbook if recreated VMs cause host-key or ssh_askpass errors.
 LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
-ansible k3s_initial -m ping --limit k3s-1
+ansible -i ansible/inventory/hosts.yml k3s_initial -m ping --limit k3s-1
 ```
 
 The host list should show `k3s-1` for the bootstrap play and no hosts for the join play. The SSH check must succeed before the Ansible ping. If a deliberately recreated VM causes a host-key error, remove its stale host-key entry as described in the [Terraform VM runbook](terraform-libvirt-vms.md#ssh-access-after-vm-recreation); for an ordinary update, investigate rather than removing it. If Ansible reports `ssh_askpass`, load the matching private key into `ssh-agent` as described there, then retry. Keep host-key checking enabled and never add the private key to Git. The Ansible ping checks SSH and Python access without changing the guest.
@@ -65,7 +64,7 @@ The host list should show `k3s-1` for the bootstrap play and no hosts for the jo
 After reviewing the inventory, template, pinned installer source, and playbook, run only the bootstrap play:
 
 ```sh
-ansible-playbook playbooks/k3s.yml --limit k3s-1
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --limit k3s-1
 ```
 
 The play creates `/etc/rancher/k3s/config.yaml` with `cluster-init: true` and the API endpoint SAN, installs the pinned K3s server as a systemd service, and starts a one-member embedded etcd cluster. This temporary state proves the first-server setup only; it has no etcd fault tolerance and does not complete the HA checkpoint. The play does not install K3s on `k3s-2` or `k3s-3`.
@@ -109,6 +108,8 @@ HAProxy does not need to be installed before the VMs or before K3s; it is an ind
 Review and install HAProxy on the host, then add the narrow host UFW rule required by its default-deny incoming policy:
 
 ```sh
+sudo apt update
+sudo apt install haproxy
 sudo ufw allow in from 10.77.0.0/24 to 10.77.0.1 port 6443 proto tcp comment 'K3s API via HAProxy (lab only)'
 sudo ufw status numbered
 ```
@@ -152,9 +153,8 @@ Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers an
 Once HAProxy is installed and validated, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint. Then review the join play's `server` URL and execute it against the remaining servers one at a time:
 
 ```sh
-cd ansible
-ansible-playbook playbooks/k3s.yml --list-hosts --limit 'k3s-2,k3s-3'
-ansible-playbook playbooks/k3s.yml --limit 'k3s-2,k3s-3'
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --list-hosts --limit 'k3s-2,k3s-3'
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/k3s.yml --limit 'k3s-2,k3s-3'
 ```
 
 The host-side kubeconfig endpoint can be changed and tested with:
@@ -171,7 +171,7 @@ After all three nodes report `Ready` and API operations succeed through the stab
 
 ## Build sequence
 
-1. Complete the [host and VM baseline](host-and-vm-baseline.md). Confirm the `extra` pool has capacity and the paused streaming VM remains stopped.
+1. Complete the [host and VM baseline](host-and-vm-baseline.md). Confirm the selected storage pool has capacity and unrelated host workloads leave enough resource headroom.
 2. Start the three equivalent VMs and verify their fixed addresses, time synchronisation, and bidirectional node connectivity; these network checks have been manually exercised.
 3. Review the Ansible inventory and playbook, then bootstrap only `k3s-1` with the pinned release and embedded etcd.
 4. Validate the single-node API locally and from the host, including TLS validation against the API certificate.
@@ -191,5 +191,17 @@ The build procedure has been exercised through formation of the three-server clu
 - [ ] No secret, token, kubeconfig credential, or generated key was committed.
 
 ## Recovery and cleanup
+
+Terraform cleanup does not remove host-owned HAProxy or UFW changes. To roll back only this lab's host endpoint, first identify the numbered rule whose comment is `K3s API via HAProxy (lab only)` with `sudo ufw status numbered`, then delete that rule with `sudo ufw delete <number>`. Rule numbers can change after deletion, so inspect them immediately before the command.
+
+If `/etc/haproxy/haproxy.cfg.bak` is the backup created by this runbook and HAProxy had no later intentional changes, restore it and validate before reloading:
+
+```sh
+sudo cp /etc/haproxy/haproxy.cfg.bak /etc/haproxy/haproxy.cfg
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg
+sudo systemctl reload haproxy
+```
+
+Do not restore the backup over later HAProxy changes. Removing the HAProxy package is optional and outside this lab's cleanup because the package and service are host-owned and may serve other configurations.
 
 VM deletion, etcd snapshot/restore, and full rebuild procedures are not yet defined. Add and test them before calling the cluster reproducible or using it for important data.

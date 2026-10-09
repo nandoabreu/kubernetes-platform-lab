@@ -4,7 +4,7 @@
 
 ## Project context
 
-This repository is a practical learning lab for Kubernetes platform infrastructure, starting with a highly available three-server K3s cluster on local libvirt VMs. Keep increments small, observable, and reproducible.
+This repository is a practical learning lab for Kubernetes platform infrastructure, starting with a three-server K3s cluster on local libvirt VMs. Keep increments small, observable, and reproducible for learners following the project one release at a time.
 
 ## Read before changing
 
@@ -14,13 +14,14 @@ This repository is a practical learning lab for Kubernetes platform infrastructu
 
 ## Working agreements
 
-- The owner reviews every change in Patched's side-by-side diff. After review, present a concise summary, explanation, affected files, validation, and proposed commit message; do not paste a unified diff into chat unless requested. Wait for explicit approval or requested changes before committing.
-- Commit one logical group at a time. After each commit, report its hash and summary, then wait for the owner's direction before preparing the next group.
-- Documentation-only changes may go directly to `main` after review; all other changes go through a pull request.
+- Keep each change within the active roadmap checkpoint and state what the change enables, what it owns, and what remains outside its scope.
+- Prefer a tested, opinionated path over broad configurability when abstraction would obscure the lesson. Keep host-specific values local unless a concrete example helps readers adapt the lab.
+- Commit one logical group at a time. Before committing, present a concise summary, affected files, validation, and proposed commit message, then wait for owner approval.
+- Use a pull request for changes prepared for a release. Small documentation corrections may go directly to `main` after review.
 - Use `.github/pull_request_template.md` for every pull request and complete each section.
 - Give each completed roadmap checkpoint a descriptive tag. Ask before pushing tags or creating GitHub releases.
 - Do not add implementation files or boilerplate before the relevant roadmap checkpoint.
-- State clearly that three VMs on one physical host do not provide host-level high availability.
+- State clearly that three VMs on one physical host demonstrate node-level control-plane resilience, not host-level high availability.
 - Keep secrets, local state, VM images, and generated credentials out of Git.
 - Use ASCII for simple diagrams and Mermaid for complex ones. Keep runbooks ordered, actionable, and explicit about validation and cleanup.
 - When adding Makefiles, put frequent commands first, group targets by workflow, and order sequential targets to match the runbooks. Add only targets needed by the active checkpoint.
@@ -42,4 +43,4 @@ This repository is a practical learning lab for Kubernetes platform infrastructu
 
 ## Validation
 
-For documentation-only changes, review Markdown structure and links, inspect the complete diff, and report checks performed. Scope other validation to the changed files and current checkpoint.
+For documentation-only changes, review Markdown structure and links, inspect the complete diff, and report checks performed. For infrastructure changes, run the configured static checks and report which operational checks were or were not exercised on a libvirt host. Scope validation to the changed files and current checkpoint.
