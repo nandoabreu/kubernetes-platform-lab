@@ -6,14 +6,14 @@ Record the conditions needed to decide whether the three-VM lab can run safely. 
 
 ## Known host facts
 
-The initial inspection found:
+The initial inspection of the test host found:
 
-- Dell Inspiron 5590, Intel i7-10510U (4 cores / 8 threads), VT-x available;
+- Intel i7-10510U (4 cores / 8 threads), VT-x available;
 - 16 GiB RAM and 4 GiB swap;
 - `/dev/kvm`, KVM, and libvirt are available;
 - libvirt pool `extra` points to `/home/common/libvirt` on `/home`;
 - `extra` reported about 64.8 GiB available at inspection time;
-- an existing 4 GiB `streaming-dev` VM is paused, has autostart enabled, and must remain stopped during this lab unless capacity is deliberately reassessed.
+- the host runs other workloads, which must remain stopped during this lab unless capacity is deliberately reassessed.
 
 These are observations, not reserved capacity. Recheck before each build because host use and free pool capacity change.
 
@@ -25,19 +25,19 @@ The `/home` ext4 filesystem had 201.56 GiB total, 140.92 GiB used, and 50.33 GiB
 
 Before refreshing the pool, libvirt reported 64.80 GiB available. `virsh pool-refresh extra` corrected the stale pool allocation figure. The pool directory contained 3.3 GiB of allocated files at the time of the snapshot.
 
-The existing `streaming-dev` VM was paused with 4 GiB configured and autostart enabled. The measured 8.3 GiB host availability includes the current paused-VM state; shut it down and rerun `make status` before relying on the three-node RAM budget. These values are a dated starting point, not evidence that Checkpoint 0 is complete.
+Another VM was paused with 4 GiB configured and autostart enabled. The measured 8.3 GiB host availability included that state; it was shut down before relying on the three-node RAM budget. These values are a dated starting point, not evidence that Checkpoint 0 is complete.
 
 The planned 36 GiB maximum capacity for three sparse VM disks leaves 14.33 GiB below the snapshot's filesystem-available value, before accounting for the image copy or unrelated host writes. Maintain at least 10 GiB of filesystem headroom and remeasure after image download and VM creation; sparse disks can grow toward their configured maximum.
 
 ## Checkpoint 0 completion snapshot
 
-The completion snapshot was recorded on 2026-10-08 at 14:18 +01:00 with all three lab VMs running and `streaming-dev` shut off with autostart disabled. The host reported 8.4 GiB RAM available, 3.1 GiB of 4 GiB swap used, 8 logical CPUs, and load averages of 1.02, 0.76, and 0.47.
+The completion snapshot was recorded on 2026-10-08 at 14:18 +01:00 with all three lab VMs running and the unrelated VM shut off with autostart disabled. The host reported 8.4 GiB RAM available, 3.1 GiB of 4 GiB swap used, 8 logical CPUs, and load averages of 1.02, 0.76, and 0.47.
 
 The `/home` ext4 filesystem had 201.56 GiB total, 142.61 GiB used, and 48.64 GiB available. After pool refresh, libvirt reported `extra` at 201.56 GiB capacity, 142.61 GiB allocation, and 58.95 GiB available; the approximately 10.3 GiB difference remains the ext4 reserved-block allowance, so the budget uses `df`'s available value. The three sparse root disks have 36 GiB total virtual capacity, leaving a conservative 12.64 GiB against that available value, above the 10 GiB headroom floor. The pool directory used 5.0 GiB.
 
 All three nodes obtained their reserved DHCP addresses (`k3s-1` at `10.77.0.11`, `k3s-2` at `10.77.0.12`, and `k3s-3` at `10.77.0.13`). The owner gracefully shut down and restarted the nodes; the same addresses were present after restart. ACPI is enabled on the domains so guest poweroff completes and libvirt reports `shut off`.
 
-This is a shared personal host, not a dedicated cluster host. The lab VMs should be started only for an exercise and shut down afterwards. Recheck `streaming-dev` autostart before host reboots or relying on the planned memory budget.
+This is a shared personal host, not a dedicated cluster host. The lab VMs should be started only for an exercise and shut down afterwards. Recheck other VM activity and autostart settings before host reboots or relying on the planned memory budget.
 
 ## Baseline checks
 
@@ -49,12 +49,11 @@ uptime
 df -h / /home /var
 virsh pool-info extra
 virsh list --all
-virsh dominfo streaming-dev
 ```
 
-Run `make status` for the same information in one dated report. It refreshes libvirt's pool inventory before displaying the pool figures; it does not start or modify VMs or volumes.
+Run `make status` for the same information in one dated report. The target defaults to the tested host's `extra` pool and `/home/common/libvirt` volume directory; override `LIBVIRT_POOL`, `LIBVIRT_VOLUME_DIR`, and `HOST_STORAGE_PATH` when your host differs. It refreshes libvirt's pool inventory before displaying the pool figures; it does not start or modify VMs or volumes.
 
-Record date, available memory, swap use, load, free space, pool availability, and running VMs. The paused `streaming-dev` VM still reserves 4 GiB of host memory; shut it down before starting the three lab VMs and reassess capacity. Its autostart setting is enabled, so account for it during host restarts.
+Record date, available memory, swap use, load, free space, pool availability, and running VMs. Paused or running unrelated VMs still reserve host memory; shut them down before starting the three lab VMs unless current measurements demonstrate sufficient capacity. Account for their autostart settings during host restarts.
 
 Compare pool availability with free space on the underlying filesystem, and budget for disk growth as well as configured maximum disk sizes. For the ext4 `/home` filesystem, pool availability includes reserved blocks that ordinary users cannot allocate; use `df`'s available figure for the safety budget. Swap already in use is a reason to measure current memory pressure, not by itself proof of active swapping.
 

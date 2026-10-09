@@ -1,3 +1,4 @@
-cloud_image_path        = "/home/common/cache/libvirt/noble-server-cloudimg-amd64.img"
+cloud_image_path        = "/path/to/noble-server-cloudimg-amd64.img"
 base_image_capacity_gib = 3.5
 ssh_public_key_path     = "~/.ssh/id_ed25519.pub"
+storage_pool            = "extra"

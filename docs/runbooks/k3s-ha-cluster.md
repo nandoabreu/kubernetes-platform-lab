@@ -171,7 +171,7 @@ After all three nodes report `Ready` and API operations succeed through the stab
 
 ## Build sequence
 
-1. Complete the [host and VM baseline](host-and-vm-baseline.md). Confirm the `extra` pool has capacity and the paused streaming VM remains stopped.
+1. Complete the [host and VM baseline](host-and-vm-baseline.md). Confirm the selected storage pool has capacity and unrelated host workloads leave enough resource headroom.
 2. Start the three equivalent VMs and verify their fixed addresses, time synchronisation, and bidirectional node connectivity; these network checks have been manually exercised.
 3. Review the Ansible inventory and playbook, then bootstrap only `k3s-1` with the pinned release and embedded etcd.
 4. Validate the single-node API locally and from the host, including TLS validation against the API certificate.
