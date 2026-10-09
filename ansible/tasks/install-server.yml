@@ -1,0 +1,62 @@
+---
+- name: Install curl for the pinned K3s installer
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the local installer directory
+  ansible.builtin.file:
+    path: /usr/local/src
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the installer from the pinned K3s release tag
+  ansible.builtin.get_url:
+    url: "{{ k3s_install_script_url }}"
+    dest: "{{ k3s_install_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the K3s configuration directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the K3s server configuration
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/k3s-server-config.yaml.j2"
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart K3s after configuration changes
+  no_log: "{{ not k3s_cluster_init }}"
+
+- name: Check the installed K3s version
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/k3s
+      - --version
+  register: k3s_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Install or update K3s to the pinned version
+  ansible.builtin.command:
+    argv:
+      - /bin/sh
+      - "{{ k3s_install_script_path }}"
+      - server
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+  when: >-
+    k3s_installed_version.rc != 0 or
+    k3s_version not in k3s_installed_version.stdout

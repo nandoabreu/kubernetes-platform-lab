@@ -30,6 +30,8 @@ The host is also used for other work, so the lab VMs run on demand rather than c
 
 ```text
 docs/         Architecture, roadmap, decisions, and runbooks
+terraform/    Libvirt network and VM provisioning
+ansible/      K3s server installation and cluster inventory
 .github/      Pull request template
 AGENTS.md     Repository-specific working instructions
 ```

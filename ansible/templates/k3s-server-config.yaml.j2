@@ -1,0 +1,10 @@
+{% if k3s_cluster_init | bool %}
+cluster-init: true
+{% else %}
+server: {{ k3s_api_endpoint | to_json }}
+token: {{ k3s_server_token | to_json }}
+{% endif %}
+tls-san:
+{% for san in k3s_api_tls_sans %}
+  - {{ san | to_json }}
+{% endfor %}
