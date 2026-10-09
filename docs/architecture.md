@@ -25,7 +25,7 @@ Terraform owns only the lab network, VM domains, and VM disks. The existing `ext
 
 All three VMs run the K3s server role. Each provides Kubernetes control-plane components and participates in the embedded etcd datastore. Three etcd members require a quorum of two and can tolerate one member being unavailable.
 
-The cluster API must have a stable endpoint reachable by clients when any one server is unavailable. The endpoint implementation and its placement are an explicit design decision to settle before the cluster-build checkpoint is automated. It must not depend solely on a workload inside the cluster to make the Kubernetes API reachable.
+The cluster API must have a stable endpoint reachable by clients when any one server is unavailable. The selected lab design is HAProxy on the libvirt host at `10.77.0.1:6443`, forwarding to the three K3s servers. The endpoint is outside the cluster and reachable from the host and lab guests; it is host-owned and does not provide host-level high availability.
 
 ## Workload and traffic
 

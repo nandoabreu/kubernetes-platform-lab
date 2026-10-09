@@ -7,10 +7,7 @@ The lab runs on local libvirt VMs. Its first workload is a small HTTP applicatio
 ## Start here
 
 - Run `make status` for a dated host, storage, network, and VM snapshot.
-- Read the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md).
-- Follow the [host and VM baseline](docs/runbooks/host-and-vm-baseline.md).
-- Follow the [Terraform VM runbook](docs/runbooks/terraform-libvirt-vms.md) to review and provision lab VMs.
-- Use the [cluster build and verification runbook](docs/runbooks/k3s-ha-cluster.md) when the relevant roadmap checkpoint is ready.
+- Use the [documentation index](docs/README.md) for the architecture, roadmap, and ordered runbooks.
 
 ## Initial target
 
@@ -30,6 +27,8 @@ The host is also used for other work, so the lab VMs run on demand rather than c
 
 ```text
 docs/         Architecture, roadmap, decisions, and runbooks
+terraform/    Libvirt network and VM provisioning
+ansible/      K3s server installation and cluster inventory
 .github/      Pull request template
 AGENTS.md     Repository-specific working instructions
 ```

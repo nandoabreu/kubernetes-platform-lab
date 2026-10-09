@@ -1,0 +1,47 @@
+---
+- name: Bootstrap the first K3s server with embedded etcd
+  hosts: k3s_initial
+  gather_facts: false
+  become: true
+  vars:
+    k3s_cluster_init: true
+  tasks:
+    - name: Install the initial K3s server
+      ansible.builtin.import_tasks: ../tasks/install-server.yml
+  handlers:
+    - name: Restart K3s after configuration changes
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: restarted
+        daemon_reload: true
+
+- name: Join additional K3s servers through the stable API endpoint
+  hosts: k3s_joiners
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    k3s_cluster_init: false
+  pre_tasks:
+    - name: Read the generated server join token from k3s-1
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      delegate_to: k3s-1
+      run_once: true
+      register: k3s_initial_server_token_file
+      no_log: true
+
+    - name: Keep the server join token in Ansible memory only
+      ansible.builtin.set_fact:
+        k3s_server_token: "{{ k3s_initial_server_token_file.content | b64decode | trim }}"
+      no_log: true
+
+  tasks:
+    - name: Install and join this K3s server
+      ansible.builtin.import_tasks: ../tasks/install-server.yml
+  handlers:
+    - name: Restart K3s after configuration changes
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: restarted
+        daemon_reload: true
