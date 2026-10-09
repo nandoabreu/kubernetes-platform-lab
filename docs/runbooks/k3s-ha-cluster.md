@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the prepared procedure for Roadmap Checkpoint 1; it has not yet been run against the VMs. The owner will review and execute the commands when ready. The network path between VMs and from the host to TCP port 6443 was manually verified with a temporary HTTP server, but K3s and etcd are not installed yet.
+This is the prepared procedure for Roadmap Checkpoint 1; it has not yet been run against the VMs. The owner will review and execute the commands when ready. VM-to-VM traffic and host-to-VM TCP port 6443 were manually verified with a temporary HTTP server, and UFW is inactive on all three guests; K3s and etcd are not installed yet.
 
 ## Decisions
 
@@ -14,6 +14,8 @@ This is the prepared procedure for Roadmap Checkpoint 1; it has not yet been run
 - Use Ansible with all three hosts in inventory. The initial execution is limited to `k3s-1`; joining servers is a separate play and is run only after the HAProxy endpoint is ready.
 
 Kubernetes uses TLS for API and control-plane communication. K3s creates and manages the cluster certificate authorities and the certificates used by API, nodes, and embedded etcd. The `tls-san` setting adds the future API endpoint IP to the API server certificate identity; it is not a custom CA and does not replace K3s-managed node or etcd certificates. The generated administrative kubeconfig and join token are credentials and must remain outside Git.
+
+Flannel is K3s's default Container Network Interface (CNI), which gives Pods network connectivity across nodes. Its VXLAN backend encapsulates Pod-network packets inside UDP packets between VM addresses; it is separate from the Kubernetes API and etcd traffic. K3s also deploys packaged components by default, including CoreDNS, Traefik, ServiceLB, local-path storage, and metrics-server. ServiceLB exposes Kubernetes `LoadBalancer` Services; it is not the stable endpoint for the Kubernetes API. This checkpoint keeps the defaults so the lab starts with the standard K3s networking and system components.
 
 ## Target
 
@@ -28,29 +30,17 @@ Kubernetes uses TLS for API and control-plane communication. K3s creates and man
 - The host needs SSH access to the guests on TCP `22` and Kubernetes API access on TCP `6443`; initially use `10.77.0.11:6443`, then the HAProxy endpoint `10.77.0.1:6443`.
 - Every server must reach the other servers on TCP `6443`, TCP `2379-2380` for embedded etcd, and UDP `8472` for the default Flannel VXLAN backend.
 - TCP `10250` between nodes is needed when using the K3s metrics-server component; retain it on the lab network only.
-- Do not expose etcd ports `2379-2380` to the host or home LAN. Keep the node-to-node ports scoped to the isolated `k3s-lab` network.
 - K3s nodes need outbound access to download the version-pinned installer and release binary. The installer verifies the binary against the matching release SHA-256 manifest.
-- The playbook does not change guest firewall policy. Check `sudo ufw status verbose` on each VM; if UFW is active, apply the following inbound rules on each VM before installing and verify them with `sudo ufw status numbered`.
 
-```sh
-sudo ufw allow from 10.77.0.0/24 to any port 6443 proto tcp
-sudo ufw allow from 10.77.0.11 to any port 2379:2380 proto tcp
-sudo ufw allow from 10.77.0.12 to any port 2379:2380 proto tcp
-sudo ufw allow from 10.77.0.13 to any port 2379:2380 proto tcp
-sudo ufw allow from 10.77.0.11 to any port 8472 proto udp
-sudo ufw allow from 10.77.0.12 to any port 8472 proto udp
-sudo ufw allow from 10.77.0.13 to any port 8472 proto udp
-sudo ufw allow from 10.77.0.11 to any port 10250 proto tcp
-sudo ufw allow from 10.77.0.12 to any port 10250 proto tcp
-sudo ufw allow from 10.77.0.13 to any port 10250 proto tcp
-sudo ufw status numbered
-```
+The three guests currently have UFW inactive, and the libvirt NAT network is not published to the home LAN. This checkpoint does not add guest firewall rules; the guests and host are treated as trusted members of the lab network. Restricting etcd and overlay-network traffic with host or guest firewall policy can be a separate security exercise later. The port list above describes K3s communication requirements, not a request to add firewall rules now.
 
 ## Ansible layout
 
-The controller configuration and inventory are in `ansible/`. `ansible/inventory/hosts.yml` contains all three VMs, the pinned K3s version, and the parameterised API endpoint/SAN. `ansible/playbooks/k3s.yml` has a bootstrap play for `k3s-1` and a serial join play for the other servers; joining servers reads the generated token from `k3s-1` without logging it. The configuration file on each guest is written with mode `0600`.
+The controller configuration and inventory are in `ansible/`. `ansible/inventory/hosts.yml` contains all three VMs, the pinned K3s version, and the parameterised API endpoint/SAN. `ansible/playbooks/k3s.yml` has a bootstrap play for `k3s-1` and a serial join play for the other servers; joining servers reads the generated token from `k3s-1` without logging it. The configuration file on each guest is written with mode `0600`. In Ansible, `hosts: k3s_joiners` selects both joining hosts from inventory; `serial: 1` runs the play's tasks on one host, completes it, and then repeats for the next host.
 
-The installer script is fetched from the matching K3s release tag rather than the moving `get.k3s.io` URL. The installer then downloads the matching K3s binary and verifies its SHA-256. The playbook does not fetch the administrative kubeconfig; the manual host-side test below stores it outside the repository.
+Each target VM downloads the installer script from the matching K3s release tag and the installer downloads that VM's K3s binary, verifying its SHA-256 against the release manifest. The playbook does not cache a binary centrally; downloading three small-cluster server binaries separately keeps the initial procedure simple. The playbook does not fetch the administrative kubeconfig; the manual host-side test below stores it outside the repository.
+
+The `/etc/rancher/k3s` path is K3s's conventional Linux configuration directory. Its name reflects K3s's Rancher project origins; installing K3s there does not install the Rancher management server.
 
 ## Prepare and review
 
@@ -85,6 +75,8 @@ ssh ubuntu@10.77.0.11 'sudo systemctl is-active k3s && sudo k3s --version && sud
 ssh ubuntu@10.77.0.11 "sudo k3s kubectl get --raw='/readyz?verbose'"
 ```
 
+`kubectl` is the Kubernetes command-line client. It sends HTTPS requests to the API server using the endpoint and credentials in a kubeconfig; it can run on the host or another authorised workstation and does not need to run inside the cluster. Running it on the host here proves host-to-API connectivity and certificate validation through the same route an administrator will use. In enterprise environments, operators commonly run `kubectl` from their workstation, a controlled bastion, or CI; identities and RBAC are usually more restricted than this lab's administrator kubeconfig.
+
 To verify the API from the host with certificate validation, copy the administrative kubeconfig to a private path outside the repository and point it at the guest's direct API address for this first check:
 
 ```sh
@@ -102,7 +94,9 @@ The kubeconfig contains administrator client credentials. Keep it under `$HOME/.
 
 ## Stable endpoint and remaining servers
 
-Stop after the single-server validation and review the HAProxy design and checks before installing it on the host. Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers and does not depend on an in-cluster workload.
+HAProxy does not need to be installed before the VMs or before K3s; it is an independent host service. We place it after the first-server validation so we can test the API proxy with one known-good backend, then observe backends become healthy as the other K3s servers join. The additional servers must not join until this endpoint works because they will register through it.
+
+Review and install HAProxy on the host, then confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers and does not depend on an in-cluster workload. Configure TCP connection logging with backend/server names so logs can show which server accepted a new connection and when a backend becomes unavailable or recovers. As this is TLS pass-through, HAProxy will not see Kubernetes HTTP requests or response bodies; a long-lived client connection can also carry multiple API requests, so logs do not promise one backend choice per `kubectl` command.
 
 Once HAProxy is installed and validated, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint. Then review the join play's `server` URL and execute it against the remaining servers one at a time:
 
@@ -122,7 +116,7 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
 
 The join play reads `/var/lib/rancher/k3s/server/node-token` from `k3s-1` over SSH and keeps the token out of task output. Each joining server uses the same pinned K3s version, the stable API URL, and the API endpoint SAN; the play uses `serial: 1` so only one server joins at a time.
 
-After confirming all three nodes are healthy and the etcd-backed API is ready, stop and restore one server at a time from the host. For each node, wait until libvirt reports it shut off, verify API readiness through HAProxy, restart it, and wait until it returns to `Ready` before testing the next node:
+After confirming all three nodes are healthy and the etcd-backed API is ready, stop and restore one server at a time from the host. Three etcd servers require a quorum of two: one server can fail while the other two continue, but two failures leave only one vote and etcd cannot commit updates. Kubernetes API operations that need the datastore then fail, and controllers cannot reconcile cluster state; already-running Pods may continue temporarily, but recovery and scheduling are impaired. For each node, wait until libvirt reports it shut off, verify API readiness through HAProxy, restart it, and wait until it returns to `Ready` before testing the next node:
 
 ```sh
 sudo virsh shutdown k3s-1
