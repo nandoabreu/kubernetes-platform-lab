@@ -37,7 +37,32 @@ Only after reviewing the complete plan, apply it with:
 terraform -chdir=terraform apply terraform.tfplan
 ```
 
-Applying creates libvirt resources but leaves the VMs stopped. Terraform does not start them or configure K3s.
+Applying creates libvirt resources but leaves the VMs stopped. Terraform does not start them or configure K3s. Start and validate the VMs before attempting SSH or continuing to the Ansible runbook.
+
+## Start and validate the VMs
+
+Run `make status` and confirm the domains and `k3s-lab` network exist. Check the network state and start it only if inactive, then start all three VMs:
+
+```sh
+virsh net-info k3s-lab
+# Run the next command only if Active is no.
+virsh net-start k3s-lab
+virsh start k3s-1
+virsh start k3s-2
+virsh start k3s-3
+virsh list --all
+virsh net-dhcp-leases k3s-lab
+```
+
+VM start returns before cloud-init and SSH are ready. Wait for each guest to finish booting before testing SSH. The DHCP reservations should assign `10.77.0.11`, `10.77.0.12`, and `10.77.0.13` to `k3s-1`, `k3s-2`, and `k3s-3`. The network provides guest egress and host-to-guest access, not direct home-LAN exposure.
+
+Connect to a guest's serial console to observe boot and cloud-init progress or use an interactive terminal:
+
+```sh
+virsh console k3s-1
+```
+
+Replace the domain name to connect to another node. Press `Ctrl+]` to detach from the console without stopping the VM.
 
 ## SSH access after VM recreation
 
@@ -65,32 +90,9 @@ If a different key was provisioned, substitute its private-key path. Ansible can
 ansible -i ansible/inventory/hosts.yml k3s_initial -m ping --limit k3s-1 --private-key "$HOME/.ssh/id_ed25519"
 ```
 
-Never put the private key in Terraform variables or Git.
+Never put the private key in Terraform variables or Git. After SSH succeeds for the required hosts, continue with the [K3s cluster build runbook](k3s-ha-cluster.md).
 
-## Validate and operate
-
-Run `make status` and confirm the domains and `k3s-lab` network exist. Check the network state and start it only if inactive, then start VMs explicitly when ready:
-
-```sh
-virsh net-info k3s-lab
-# Run the next command only if Active is no.
-virsh net-start k3s-lab
-virsh start k3s-1
-virsh start k3s-2
-virsh start k3s-3
-virsh list --all
-virsh net-dhcp-leases k3s-lab
-```
-
-The DHCP reservations should assign `10.77.0.11`, `10.77.0.12`, and `10.77.0.13` to `k3s-1`, `k3s-2`, and `k3s-3`. The network provides guest egress and host-to-guest access, not direct home-LAN exposure.
-
-Connect to a guest's serial console for boot output and an interactive terminal:
-
-```sh
-virsh console k3s-1
-```
-
-Replace the domain name to connect to another node. Press `Ctrl+]` to detach from the console without stopping the VM.
+## Stop the VMs
 
 The domains expose ACPI so Ubuntu can process a graceful power-button request. `virsh shutdown` only submits that request; wait for `virsh domstate` or `virsh list --all` to report `shut off` before assuming the host memory has been released.
 

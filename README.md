@@ -72,7 +72,7 @@ terraform -chdir=terraform show terraform.tfplan
 terraform -chdir=terraform apply terraform.tfplan
 ```
 
-This completes the `v0.0.1` boundary. Terraform deliberately leaves the VMs stopped. Continue with the [Terraform VM runbook](docs/runbooks/terraform-libvirt-vms.md#validate-and-operate) to start and validate them.
+Terraform deliberately leaves the VMs stopped. Continue immediately with [Start and validate the VMs](docs/runbooks/terraform-libvirt-vms.md#start-and-validate-the-vms); SSH and Ansible require the guests to be running. Completing those VM checks reaches the `v0.0.1` boundary.
 
 6. To reach the `v0.1.0` boundary, follow the [K3s cluster build runbook](docs/runbooks/k3s-ha-cluster.md), then perform the [failure and restart validation](docs/runbooks/k3s-ha-validation.md). The staged procedure matters: the first server is validated before HAProxy is configured and the other two servers join.
 
