@@ -14,10 +14,11 @@
     group: root
     mode: "0755"
 
-- name: Download the installer from the pinned K3s release tag
+- name: Download and verify the installer from the pinned K3s commit
   ansible.builtin.get_url:
     url: "{{ k3s_install_script_url }}"
     dest: "{{ k3s_install_script_path }}"
+    checksum: "sha256:{{ k3s_install_script_sha256 }}"
     owner: root
     group: root
     mode: "0755"
@@ -59,4 +60,5 @@
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
   when: >-
     k3s_installed_version.rc != 0 or
-    k3s_version not in k3s_installed_version.stdout
+    (k3s_installed_version.stdout.split() | length < 3) or
+    (k3s_installed_version.stdout.split()[2] != k3s_version)

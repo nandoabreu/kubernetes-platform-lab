@@ -39,6 +39,34 @@ terraform -chdir=terraform apply terraform.tfplan
 
 Applying creates libvirt resources but leaves the VMs stopped. Terraform does not start them or configure K3s.
 
+## SSH access after VM recreation
+
+Recreating a VM generates new SSH host keys. If SSH reports `REMOTE HOST IDENTIFICATION HAS CHANGED` or `Host key verification failed` after a deliberate recreation, remove the stale `known_hosts` entry for that VM's IP, then reconnect and accept the new key:
+
+```sh
+ssh-keygen -R 10.77.0.11
+LC_ALL=C ssh ubuntu@10.77.0.11 true
+```
+
+The first command removes the stale host key for that VM address; the SSH connection then prompts to trust the newly generated key. Do this only when the VM was deliberately destroyed and recreated. For an in-place update, do not remove a changed key merely to silence the warning; stop and investigate the identity change first. Repeat with each recreated VM address.
+
+An `ssh_askpass` error means SSH attempted an interactive password or encrypted-key prompt without an available terminal helper. The preferred fix is to make the private key matching the provisioned public key available to `ssh-agent` in the same shell used for Ansible:
+
+```sh
+eval "$(ssh-agent -s)"
+ssh-add "$HOME/.ssh/id_ed25519"
+ssh-add -l
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
+```
+
+If a different key was provisioned, substitute its private-key path. Ansible can also be given that path explicitly:
+
+```sh
+ansible k3s_initial -m ping --limit k3s-1 --private-key "$HOME/.ssh/id_ed25519"
+```
+
+Never put the private key in Terraform variables or Git.
+
 ## Validate and operate
 
 Run `make status` and confirm the domains and `k3s-lab` network exist. Check the network state and start it only if inactive, then start VMs explicitly when ready:

@@ -26,7 +26,7 @@ Each node should show the `control-plane,etcd` roles, and verbose readiness shou
 Node roles, etcd readiness checks, and single-node outage tests verify quorum behaviour. The following read-only check additionally lists the configured etcd members. K3s does not install `etcdctl`; this downloads the upstream `v3.7.1` client matching the embedded etcd `v3.7.1-k3s3` base version, verifies its release checksum, uses K3s-managed TLS credentials, and removes the temporary files afterward:
 
 ```sh
-ssh ubuntu@10.77.0.11 'bash -s' <<'REMOTE'
+LC_ALL=C ssh ubuntu@10.77.0.11 'bash -s' <<'REMOTE'
 set -euo pipefail
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
@@ -106,8 +106,13 @@ On restart, check the `k3s-lab` libvirt network and start it if inactive; see th
 virsh start k3s-1
 virsh start k3s-2
 virsh start k3s-3
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes --watch
+```
+
+VM start returns before the guests and API are ready. An initial API request may return `ServiceUnavailable`; repeat the readiness and node checks below until the API is ready and all nodes report `Ready`. This is guest/K3s startup time, distinct from the heartbeat lease delay used to detect a stopped node.
+
+```sh
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
 ```
 
 Confirm all three nodes return to `Ready`, the stable API endpoint works, the etcd readiness check passes, and HAProxy reports all three backends healthy. Capture `make status` again and record memory, swap, CPU, disk, and pool usage.

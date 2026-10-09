@@ -30,7 +30,7 @@ Flannel is K3s's default Container Network Interface (CNI), which gives Pods net
 - The host needs SSH access to the guests on TCP `22` and Kubernetes API access on TCP `6443`; initially use `10.77.0.11:6443`, then the HAProxy endpoint `10.77.0.1:6443`.
 - Every server must reach the other servers on TCP `6443`, TCP `2379-2380` for embedded etcd, and UDP `8472` for the default Flannel VXLAN backend.
 - TCP `10250` between nodes is needed when using the K3s metrics-server component; retain it on the lab network only.
-- K3s nodes need outbound access to download the version-pinned installer and release binary. The installer verifies the binary against the matching release SHA-256 manifest.
+- K3s nodes need outbound access to download the installer and release binary. Ansible pins the installer source to a full K3s commit and verifies its SHA-256; the installer separately verifies the version-pinned K3s binary against the release manifest.
 
 The three guests currently have UFW inactive, and the libvirt NAT network is not published to the home LAN. This checkpoint does not add guest firewall rules; the guests and host are treated as trusted members of the lab network. Restricting etcd and overlay-network traffic with host or guest firewall policy can be a separate security exercise later. The port list above describes K3s communication requirements, not a request to add firewall rules now.
 
@@ -38,7 +38,7 @@ The three guests currently have UFW inactive, and the libvirt NAT network is not
 
 The controller configuration and inventory are in `ansible/`. `ansible/inventory/hosts.yml` contains all three VMs, the pinned K3s version, and the parameterised API endpoint/SAN. `ansible/playbooks/k3s.yml` has a bootstrap play for `k3s-1` and a serial join play for the other servers; joining servers reads the generated token from `k3s-1` without logging it. The configuration file on each guest is written with mode `0600`. In Ansible, `hosts: k3s_joiners` selects both joining hosts from inventory; `serial: 1` runs the play's tasks on one host, completes it, and then repeats for the next host.
 
-Each target VM downloads the installer script from the matching K3s release tag and the installer downloads that VM's K3s binary, verifying its SHA-256 against the release manifest. The playbook does not cache a binary centrally; downloading three small-cluster server binaries separately keeps the initial procedure simple. The playbook does not fetch the administrative kubeconfig; the manual host-side test below stores it outside the repository.
+Each target VM downloads the installer script from the full commit associated with K3s `v1.37.1+k3s1`; Ansible verifies the script SHA-256 before execution. The installer downloads that VM's K3s binary and verifies it against the release manifest. The playbook compares the complete installed version token, not a substring, and does not cache a binary centrally. The playbook does not fetch the administrative kubeconfig; the manual host-side test below stores it outside the repository.
 
 The `/etc/rancher/k3s` path is K3s's conventional Linux configuration directory. Its name reflects K3s's Rancher project origins; installing K3s there does not install the Rancher management server.
 
@@ -53,10 +53,12 @@ kubectl version --client
 ansible-inventory --graph
 ansible-playbook playbooks/k3s.yml --syntax-check
 ansible-playbook playbooks/k3s.yml --list-hosts --limit k3s-1
+# See the Terraform VM runbook if recreated VMs cause host-key or ssh_askpass errors.
+LC_ALL=C ssh -o BatchMode=yes ubuntu@10.77.0.11 true
 ansible k3s_initial -m ping --limit k3s-1
 ```
 
-The host list should show `k3s-1` for the bootstrap play and no hosts for the join play. The ping command checks Ansible's SSH and Python access without changing the guest.
+The host list should show `k3s-1` for the bootstrap play and no hosts for the join play. The SSH check must succeed before the Ansible ping. If a deliberately recreated VM causes a host-key error, remove its stale host-key entry as described in the [Terraform VM runbook](terraform-libvirt-vms.md#ssh-access-after-vm-recreation); for an ordinary update, investigate rather than removing it. If Ansible reports `ssh_askpass`, load the matching private key into `ssh-agent` as described there, then retry. Keep host-key checking enabled and never add the private key to Git. The Ansible ping checks SSH and Python access without changing the guest.
 
 ## Bootstrap and validate one server
 
@@ -71,8 +73,13 @@ The play creates `/etc/rancher/k3s/config.yaml` with `cluster-init: true` and th
 Check the service and API locally on the guest:
 
 ```sh
-LC_ALL=C ssh ubuntu@10.77.0.11 "sudo systemctl is-active k3s \; sudo /usr/local/bin/k3s --version \; sudo /usr/local/bin/k3s kubectl get nodes"
-LC_ALL=C ssh ubuntu@10.77.0.11 "sudo /usr/local/bin/k3s kubectl get --raw='/readyz?verbose'"
+LC_ALL=C ssh ubuntu@10.77.0.11 'bash -s' <<'REMOTE'
+set -e
+sudo systemctl is-active k3s
+sudo /usr/local/bin/k3s --version
+sudo /usr/local/bin/k3s kubectl get nodes
+sudo /usr/local/bin/k3s kubectl get --raw='/readyz?verbose'
+REMOTE
 ```
 
 `kubectl` is the Kubernetes command-line client. It sends HTTPS requests to the API server using the endpoint and credentials in a kubeconfig; it can run on the host or another authorised workstation and does not need to run inside the cluster. Running it on the host here proves host-to-API connectivity and certificate validation through the same route an administrator will use. In enterprise environments, operators commonly run `kubectl` from their workstation, a controlled bastion, or CI; identities and RBAC are usually more restricted than this lab's administrator kubeconfig.
@@ -80,18 +87,20 @@ LC_ALL=C ssh ubuntu@10.77.0.11 "sudo /usr/local/bin/k3s kubectl get --raw='/read
 To verify the API from the host with certificate validation, copy the administrative kubeconfig to a private path outside the repository and point it at the guest's direct API address for this first check:
 
 ```sh
+bash -s <<'LOCAL'
 set -e
 umask 077
 install -d -m 0700 "$HOME/.kube"
 touch "$HOME/.kube/k3s-lab.yaml"
 chmod 0600 "$HOME/.kube/k3s-lab.yaml"
-ssh ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
+LC_ALL=C ssh ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.11:6443
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
+LOCAL
 ```
 
-The kubeconfig contains administrator client credentials. Keep it under `$HOME/.kube`, do not display it, and do not add it to Git. Confirm the API response includes the ready checks and that the API certificate validates when reached at `10.77.0.11`.
+The commands run in a child Bash process so `set -e` and the restrictive `umask` do not change or terminate the interactive shell. The SSH command opens a short-lived non-interactive connection and closes it after copying the file. The kubeconfig contains administrator client credentials. Keep it under `$HOME/.kube`, do not display it, and do not add it to Git. Confirm the API response includes the ready checks and that the API certificate validates when reached at `10.77.0.11`.
 
 ## Stable endpoint and remaining servers
 
