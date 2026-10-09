@@ -92,14 +92,15 @@ umask 077
 install -d -m 0700 "$HOME/.kube"
 touch "$HOME/.kube/k3s-lab.yaml"
 chmod 0600 "$HOME/.kube/k3s-lab.yaml"
-LC_ALL=C ssh ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
+LC_ALL=C ssh -n ubuntu@10.77.0.11 'sudo cat /etc/rancher/k3s/k3s.yaml' > "$HOME/.kube/k3s-lab.yaml"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.11:6443
+test "$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config view --minify -o jsonpath='{.clusters[0].cluster.server}')" = 'https://10.77.0.11:6443'
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
 LOCAL
 ```
 
-The commands run in a child Bash process so `set -e` and the restrictive `umask` do not change or terminate the interactive shell. The SSH command opens a short-lived non-interactive connection and closes it after copying the file. The kubeconfig contains administrator client credentials. Keep it under `$HOME/.kube`, do not display it, and do not add it to Git. Confirm the API response includes the ready checks and that the API certificate validates when reached at `10.77.0.11`.
+The commands run in a child Bash process so `set -e` and the restrictive `umask` do not change or terminate the interactive shell. The SSH `-n` option prevents SSH from consuming the remaining heredoc commands from the child process's standard input. The connection closes after copying the file, and the endpoint assertion stops the sequence if the kubeconfig still points elsewhere. The kubeconfig contains administrator client credentials. Keep it under `$HOME/.kube`, do not display it, and do not add it to Git. Confirm the API response includes the ready checks and that the API certificate validates when reached at `10.77.0.11`.
 
 ## Stable endpoint and remaining servers
 
