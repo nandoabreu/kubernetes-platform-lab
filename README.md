@@ -86,6 +86,7 @@ Terraform deliberately leaves the VMs stopped. Continue immediately with [Start 
 - [Host and VM baseline](docs/runbooks/host-and-vm-baseline.md): resource measurement and tested-host evidence.
 - [Terraform VM runbook](docs/runbooks/terraform-libvirt-vms.md): provisioning, operation, and cleanup.
 - [K3s cluster build](docs/runbooks/k3s-ha-cluster.md): bootstrap, HAProxy, and cluster formation.
+- [Host HAProxy endpoints](docs/runbooks/host-haproxy.md): stable API entry point and optional single-address HTTP access for the demo.
 - [K3s validation](docs/runbooks/k3s-ha-validation.md): quorum, node failure, and restart exercises.
 - [Workload routing and scheduling](docs/runbooks/k3s-workload-routing.md): version, apply, and inspect the HTTP demo workload.
 

@@ -112,6 +112,8 @@ for node_ip in 10.77.0.11 10.77.0.12 10.77.0.13; do curl --include --fail --show
 
 Each request should return the `whoami` response instead of Traefik's default `404`; the response identifies the serving Pod. If the connection times out, check host-to-VM reachability and the Traefik LoadBalancer/ServiceLB Pods. If Traefik returns `404`, check the IngressClass, Host header, rule, and namespace Service name/port. This exposes the demo only on private lab VM addresses, not to the home LAN or Internet.
 
+To use one host-side address instead of the three VM addresses, optionally follow the [Host HAProxy Endpoints runbook](host-haproxy.md#add-one-host-side-address-for-the-demo-ingress). It adds a host-owned listener at `10.77.0.1:80` in front of the three Traefik node listeners. The Ingress rule remains unchanged; this HAProxy listener is not required for in-cluster Service routing or for the individual-IP Ingress test above.
+
 ## Observe reconciliation and scheduler decisions
 
 In one terminal, watch Pod creation, readiness, restarts, and node placement:

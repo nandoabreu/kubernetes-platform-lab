@@ -104,61 +104,7 @@ The commands run in a child Bash process so `set -e` and the restrictive `umask`
 
 ## Stable endpoint and remaining servers
 
-HAProxy does not need to be installed before the VMs or before K3s; it is an independent host service. We place it after the first-server validation so we can test the API proxy with one known-good backend, then observe backends become healthy as the other K3s servers join. The additional servers must not join until this endpoint works because they will register through it.
-
-Review and install HAProxy on the host, then add the narrow host UFW rule required by its default-deny incoming policy:
-
-```sh
-sudo apt update
-sudo apt install haproxy
-sudo ufw allow in from 10.77.0.0/24 to 10.77.0.1 port 6443 proto tcp comment 'K3s API via HAProxy (lab only)'
-sudo ufw status numbered
-```
-
-Do not replace the package configuration. It contains useful global settings for the chroot, unprivileged `haproxy` user, admin stats socket, TLS defaults, and existing HTTP defaults. The packaged systemd service loads only `/etc/haproxy/haproxy.cfg`; it does not automatically load an apt-style `conf.d` directory. Back up the file, then append a named TCP defaults section and the API frontend/backend below. This keeps the existing HTTP defaults for any other proxy sections.
-
-```haproxy
-defaults k3s_api_defaults
-    mode tcp
-    log global
-    option tcplog
-    option logasap
-    timeout connect 5s
-    timeout client 1h
-    timeout server 1h
-
-frontend k3s_api from k3s_api_defaults
-    bind 10.77.0.1:6443
-    default_backend k3s_api_servers
-
-backend k3s_api_servers from k3s_api_defaults
-    balance roundrobin
-    option log-health-checks
-    server k3s-1 10.77.0.11:6443 check inter 2s fall 2 rise 2
-    server k3s-2 10.77.0.12:6443 check inter 2s fall 2 rise 2
-    server k3s-3 10.77.0.13:6443 check inter 2s fall 2 rise 2
-```
-
-Back up the package file, append the three HAProxy sections above with `sudoedit`, validate the result, and reload HAProxy:
-
-```sh
-sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak
-sudoedit /etc/haproxy/haproxy.cfg
-sudo haproxy -c -f /etc/haproxy/haproxy.cfg
-sudo systemctl reload haproxy
-sudo tail -f /var/log/haproxy.log
-```
-
-Confirm the endpoint `10.77.0.1:6443` forwards TCP to the healthy K3s servers and does not depend on an in-cluster workload. `balance roundrobin` distributes new TCP connections across healthy backends. The `check` settings test whether each backend accepts TCP connections; after two failed checks HAProxy marks it down, and after two successful checks it marks it up. These layer-4 checks detect an unavailable API listener but do not validate K3s readiness or etcd health; verify readiness separately with `kubectl`. `option tcplog` with `option logasap` logs the backend/server selected for each new connection as soon as possible, while `option log-health-checks` records backend state transitions. The package configures rsyslog to write HAProxy messages to `/var/log/haproxy.log`; follow that file while nodes are added or stopped. As this is TLS pass-through, HAProxy will not see Kubernetes HTTP requests or response bodies; a long-lived client connection can also carry multiple API requests, so logs do not promise one backend choice per `kubectl` command.
-
-Once HAProxy is installed, update the host-side kubeconfig to use `https://10.77.0.1:6443` and confirm API access through that endpoint while `k3s-1` is its only healthy backend:
-
-```sh
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config set-cluster default --server=https://10.77.0.1:6443
-test "$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config view --minify -o jsonpath='{.clusters[0].cluster.server}')" = 'https://10.77.0.1:6443'
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
-```
+HAProxy is an independent, host-owned service. Follow the [Host HAProxy Endpoints runbook](host-haproxy.md#configure-the-stable-k3s-api-endpoint) to install it, add the narrowly scoped UFW rule, configure the API listener on `10.77.0.1:6443`, validate the listener, and update the host-side kubeconfig. Complete that API stage before joining `k3s-2` and `k3s-3`; they register through the stable endpoint. The same runbook documents the optional HTTP listener for the demo Ingress on `10.77.0.1:80` after Checkpoint 2.
 
 Only after those checks pass, validate SSH and Ansible access to both joiners. Then review the play's selected hosts and execute it; `serial: 1` joins one server at a time:
 
@@ -182,7 +128,7 @@ After all three nodes report `Ready` and API operations succeed through the stab
 2. Start the three equivalent VMs and verify their fixed addresses, time synchronisation, and bidirectional node connectivity; these network checks have been manually exercised.
 3. Review the Ansible inventory and playbook, then bootstrap only `k3s-1` with the pinned release and embedded etcd.
 4. Validate the single-node API locally and from the host, including TLS validation against the API certificate.
-5. Review, install, and validate the host HAProxy endpoint. Do this before joining additional servers.
+5. Follow the [Host HAProxy Endpoints runbook](host-haproxy.md#configure-the-stable-k3s-api-endpoint) to install and validate the host API endpoint before joining additional servers.
 6. Join `k3s-2` and `k3s-3` sequentially through the stable endpoint using the same K3s version and server configuration.
 7. Verify all three nodes, control-plane availability, datastore health, and access through the stable API endpoint.
 8. Continue to the [K3s HA validation runbook](k3s-ha-validation.md) for failure, resource, and full-restart exercises.
@@ -199,16 +145,6 @@ The build procedure has been exercised through formation of the three-server clu
 
 ## Recovery and cleanup
 
-Terraform cleanup does not remove host-owned HAProxy or UFW changes. To roll back only this lab's host endpoint, first identify the numbered rule whose comment is `K3s API via HAProxy (lab only)` with `sudo ufw status numbered`, then delete that rule with `sudo ufw delete <number>`. Rule numbers can change after deletion, so inspect them immediately before the command.
-
-If `/etc/haproxy/haproxy.cfg.bak` is the backup created by this runbook and HAProxy had no later intentional changes, restore it and validate before reloading:
-
-```sh
-sudo cp /etc/haproxy/haproxy.cfg.bak /etc/haproxy/haproxy.cfg
-sudo haproxy -c -f /etc/haproxy/haproxy.cfg
-sudo systemctl reload haproxy
-```
-
-Do not restore the backup over later HAProxy changes. Removing the HAProxy package is optional and outside this lab's cleanup because the package and service are host-owned and may serve other configurations.
+Terraform cleanup does not remove host-owned HAProxy or UFW changes. Follow the [Host HAProxy Endpoints runbook](host-haproxy.md#roll-back-the-k3s-api-endpoint) to remove only this lab's API listener and firewall rule safely. Do not remove the shared HAProxy package or restore a backup over later intentional changes; the host service may contain other configurations.
 
 VM deletion, etcd snapshot/restore, and full rebuild procedures are not yet defined. Add and test them before calling the cluster reproducible or using it for important data.
