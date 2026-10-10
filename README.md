@@ -26,7 +26,7 @@ The three control-plane nodes can tolerate one K3s server being unavailable beca
 | `v0.1.0` | A validated three-server K3s cluster with embedded etcd, a host-side HAProxy API endpoint, one-node failure exercises, and full lab restart validation | Application workloads, workload failure exercises, etcd backup/restore, or a production-ready platform |
 | `v0.1.1` | Public-project documentation, licensing, portable entry points, and static validation for the existing `v0.1.0` capability | New cluster or workload capability |
 
-The next functional checkpoint deploys a multi-replica HTTP workload behind a Kubernetes Service. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
+Checkpoint 2 adds a versioned HTTP workload, Kubernetes Service, and host-side route through Traefik Ingress on the private lab network. Follow the [workload routing runbook](docs/runbooks/k3s-workload-routing.md) to apply and validate it. The next functional checkpoint exercises node and workload failures. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
 
 ## Requirements
 
@@ -76,6 +76,8 @@ Terraform deliberately leaves the VMs stopped. Continue immediately with [Start 
 
 6. To reach the `v0.1.0` boundary, follow the [K3s cluster build runbook](docs/runbooks/k3s-ha-cluster.md), then perform the [failure and restart validation](docs/runbooks/k3s-ha-validation.md). The staged procedure matters: the first server is validated before HAProxy is configured and the other two servers join.
 
+7. To begin Checkpoint 2, follow the [workload routing and scheduling runbook](docs/runbooks/k3s-workload-routing.md). It shows where the Kubernetes manifests live, how `kubectl apply` sends them to the API, and how to inspect replicas, node placement, Service endpoints, events, and resource signals.
+
 ## Documentation
 
 - [Documentation index](docs/README.md): requirements and ordered reading path.
@@ -84,13 +86,16 @@ Terraform deliberately leaves the VMs stopped. Continue immediately with [Start 
 - [Host and VM baseline](docs/runbooks/host-and-vm-baseline.md): resource measurement and tested-host evidence.
 - [Terraform VM runbook](docs/runbooks/terraform-libvirt-vms.md): provisioning, operation, and cleanup.
 - [K3s cluster build](docs/runbooks/k3s-ha-cluster.md): bootstrap, HAProxy, and cluster formation.
+- [Host HAProxy API endpoint](docs/runbooks/host-haproxy.md): stable control-plane entry point, firewall, validation, and rollback.
 - [K3s validation](docs/runbooks/k3s-ha-validation.md): quorum, node failure, and restart exercises.
+- [Workload routing and scheduling](docs/runbooks/k3s-workload-routing.md): version, apply, and inspect the HTTP demo workload.
 
 ## Repository layout
 
 ```text
 terraform/    Libvirt network and VM provisioning
 ansible/      K3s server installation and cluster inventory
+kubernetes/  Versioned Kubernetes workload manifests
 docs/         Architecture, roadmap, evidence, and runbooks
 .github/      Pull request guidance and automated checks
 AGENTS.md     Instructions for coding agents working in this repository

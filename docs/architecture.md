@@ -37,7 +37,7 @@ Terraform owns only the lab network, VM domains, and VM disks. The selected stor
 
 All three VMs run the K3s server role. Each provides Kubernetes control-plane components and participates in the embedded etcd datastore. Three etcd members require a quorum of two and can tolerate one member being unavailable.
 
-The cluster API must have a stable endpoint reachable by clients when any one server is unavailable. The selected lab design is HAProxy on the libvirt host at `10.77.0.1:6443`, forwarding to the three K3s servers. The endpoint is outside the cluster and reachable from the host and lab guests; it is host-owned and does not provide host-level high availability.
+The cluster API must have a stable endpoint reachable by clients when any one server is unavailable. The selected lab design is HAProxy on the libvirt host at `10.77.0.1:6443`, forwarding to the three K3s servers. The endpoint is outside the cluster and reachable from the host and lab guests; it is host-owned and does not provide host-level high availability. The [Host HAProxy API Endpoint runbook](runbooks/host-haproxy.md) documents its listener, firewall rule, validation, and rollback.
 
 ## Workload and traffic
 
@@ -62,9 +62,11 @@ flowchart LR
 
 The diagram shows one cross-node path. K3s configures the same full-mesh VXLAN relationship among all three servers. The libvirt network routes VM traffic and guest egress; Flannel provides the overlay used for Pod-to-Pod traffic across nodes. A Kubernetes Service adds another virtual addressing and routing layer, implemented by cluster networking rather than by libvirt or HAProxy.
 
-The planned Checkpoint 2 demo is a small HTTP responder deployed with multiple replicas. Responses will identify the serving Pod and, where practical, its node. A Kubernetes Service will provide a stable in-cluster address and route connections to ready Pods. The scheduler places Pods on nodes; the Service does not place workloads or guarantee that replicas occupy distinct nodes.
+The Checkpoint 2 demo is a small HTTP responder defined by versioned manifests under `kubernetes/`. A Deployment maintains three replicas, each response identifies the serving Pod, and a ClusterIP Service provides a stable in-cluster address and routes connections to ready Pods. Learners first apply one replica, inspect its node, then increase the desired replica count and observe the scheduler and Service. `kubectl get pods -o wide` correlates Pods with nodes. The initial Deployment has no placement rule; topology spread is a follow-up scheduling exercise. The Service does not place workloads or guarantee that replicas occupy distinct nodes.
 
-An external load balancer for the demo application is a separate exercise from the stable API endpoint. Begin with in-cluster Service routing and add external access only when its networking model is selected and documented.
+The operator applies repository manifests to the K3s API using `kubectl` and a private kubeconfig. Git versions the desired configuration and change history; Kubernetes stores and reconciles the live objects. This lab uses direct `kubectl apply` and does not configure a GitOps controller.
+
+K3s ServiceLB exposes the same Traefik gateway on each node IP. Entering through any one advertised listener does not bind application traffic to that node: Traefik applies the HTTP Host/path rule, and the demo ClusterIP Service selects ready Pods across the cluster network. The three node addresses are alternate gateway listeners, not one external address per application replica. A corporate environment normally places DNS and a stable cloud or datacenter load-balancer address in front of the gateway so consumers do not know node addresses; that external network integration is outside this checkpoint. The host HAProxy remains dedicated to the Kubernetes API on port `6443` and is not part of the demo application path. Neither endpoint is exposed to the home LAN or Internet.
 
 ## Failure model and limitations
 
