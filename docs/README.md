@@ -18,5 +18,6 @@ Run `make requirements` to check whether the documented command-line tools are a
 - [Terraform libvirt VMs](runbooks/terraform-libvirt-vms.md): VM input preparation, plan review, and provisioning.
 - [K3s HA cluster build](runbooks/k3s-ha-cluster.md): Ansible installation, HAProxy setup, and cluster formation.
 - [K3s HA validation](runbooks/k3s-ha-validation.md): quorum, node failure/recovery, resource, and full-restart exercises.
+- [K3s workload routing and scheduling](runbooks/k3s-workload-routing.md): version and apply manifests, inspect Pod placement, Service routing, events, and resource signals.
 
 Runbooks become active when their roadmap checkpoint is implemented and validated. Architecture decisions that affect later checkpoints should be recorded under `adr/`.

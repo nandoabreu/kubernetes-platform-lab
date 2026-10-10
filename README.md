@@ -76,6 +76,8 @@ Terraform deliberately leaves the VMs stopped. Continue immediately with [Start 
 
 6. To reach the `v0.1.0` boundary, follow the [K3s cluster build runbook](docs/runbooks/k3s-ha-cluster.md), then perform the [failure and restart validation](docs/runbooks/k3s-ha-validation.md). The staged procedure matters: the first server is validated before HAProxy is configured and the other two servers join.
 
+7. To begin Checkpoint 2, follow the [workload routing and scheduling runbook](docs/runbooks/k3s-workload-routing.md). It shows where the Kubernetes manifests live, how `kubectl apply` sends them to the API, and how to inspect replicas, node placement, Service endpoints, events, and resource signals.
+
 ## Documentation
 
 - [Documentation index](docs/README.md): requirements and ordered reading path.
@@ -85,12 +87,14 @@ Terraform deliberately leaves the VMs stopped. Continue immediately with [Start 
 - [Terraform VM runbook](docs/runbooks/terraform-libvirt-vms.md): provisioning, operation, and cleanup.
 - [K3s cluster build](docs/runbooks/k3s-ha-cluster.md): bootstrap, HAProxy, and cluster formation.
 - [K3s validation](docs/runbooks/k3s-ha-validation.md): quorum, node failure, and restart exercises.
+- [Workload routing and scheduling](docs/runbooks/k3s-workload-routing.md): version, apply, and inspect the HTTP demo workload.
 
 ## Repository layout
 
 ```text
 terraform/    Libvirt network and VM provisioning
 ansible/      K3s server installation and cluster inventory
+kubernetes/  Versioned Kubernetes workload manifests
 docs/         Architecture, roadmap, evidence, and runbooks
 .github/      Pull request guidance and automated checks
 AGENTS.md     Instructions for coding agents working in this repository
