@@ -86,3 +86,7 @@ Do not assume Wi-Fi bridging or direct LAN attachment works for libvirt guests. 
 - A dated status snapshot records RAM and disk headroom and explains any difference between libvirt pool availability and filesystem availability.
 - The selected guest image and SHA-256 checksum, lab network, and stable address reservations are recorded.
 - All three VMs have booted, received their reserved addresses, and retained those addresses through graceful shutdown and restart.
+
+## Next step
+
+When the baseline is recorded and the host has enough capacity, continue with [Terraform VM provisioning](terraform-libvirt-vms.md). This is a suggested continuation; repeat the baseline checks whenever host capacity or other workloads change.

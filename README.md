@@ -27,13 +27,13 @@ The three control-plane nodes can tolerate one K3s server being unavailable beca
 | `v0.1.1` | Public-project documentation, licensing, portable entry points, and static validation for the existing `v0.1.0` capability | New cluster or workload capability |
 | `v0.2.0` | A versioned three-replica HTTP workload, ClusterIP Service, Traefik Ingress, and verified host access through K3s ServiceLB node listeners | Node/VM failure exercises, guaranteed cross-node Pod placement, a single stable application VIP, ingress-controller HA, or a production-ready platform |
 
-Checkpoint 2 is delivered by `v0.2.0`. Follow the [workload routing runbook](docs/runbooks/k3s-workload-routing.md) to replay it. The next functional checkpoint exercises node and workload failures. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
+Checkpoint 2 is delivered by `v0.2.0`. The [documentation index](docs/README.md) gives the ordered replay path to that release. The next functional checkpoint exercises node and workload failures; the [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
 
 ## Getting started
 
 The lab was tested on a Linux x86-64 host with 16 GiB RAM, KVM/libvirt, and storage for three VMs. See [requirements and the ordered replay path](docs/README.md) before provisioning; detailed commands live in the runbooks.
 
-For an overview of delivered capabilities, see the [release boundaries](#release-boundaries) and [roadmap](docs/roadmap.md). To replay the latest release, follow the [workload routing runbook](docs/runbooks/k3s-workload-routing.md) after completing its cluster prerequisites.
+For an overview of delivered capabilities, see the [release boundaries](#release-boundaries) and [roadmap](docs/roadmap.md). For the complete replay sequence, start at the [documentation index](docs/README.md).
 
 ## Documentation
 

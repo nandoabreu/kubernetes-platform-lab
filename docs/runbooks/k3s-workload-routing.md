@@ -247,3 +247,7 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" delete -f kubernetes/demo/whoami
 ```
 
 Record the one-Pod starting placement, the three-Pod placement, successful responses from replicas through the Service and host-side Ingress, replacement-Pod scheduling evidence, the ready EndpointSlice, and current resource observations. Checkpoint 2 is complete when in-cluster and host-side requests reach the HTTP workload through their documented routes. Controlled node-failure recovery is validated in Checkpoint 3.
+
+## Next step
+
+Checkpoint 3 is the next planned capability. See the [roadmap](../roadmap.md) for its failure-exercise goals; its workload-failure procedure is not yet documented, so this runbook is the current replay endpoint.

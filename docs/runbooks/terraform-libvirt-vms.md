@@ -121,3 +121,7 @@ terraform -chdir=terraform apply terraform.destroy.tfplan
 ```
 
 Destroying the Terraform-managed resources deletes the lab domains, their QCOW2 overlays, the imported base-image volume, cloud-init volumes, and NAT network from the selected storage pool. It reclaims the physical blocks those managed volumes used, but leaves the source image configured by `cloud_image_path`, the storage pool itself, unrelated VMs, and the `default` network untouched.
+
+## Next step
+
+To continue the replay, complete [Start and validate the VMs](#start-and-validate-the-vms), confirm SSH and Ansible access to all three guests, then proceed to the [K3s HA cluster build](k3s-ha-cluster.md). That runbook uses Ansible to bootstrap the first server before configuring the API endpoint and joining the other two. If you have run the cleanup above, recreate the VMs before continuing.

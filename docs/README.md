@@ -14,7 +14,13 @@ Run `make requirements` to check whether the documented command-line tools are a
 
 ## Replay and explore
 
-For a full replay, work through the operational runbooks in order: [host and VM baseline](runbooks/host-and-vm-baseline.md), [Terraform VM provisioning](runbooks/terraform-libvirt-vms.md), [K3s HA cluster build](runbooks/k3s-ha-cluster.md), then [K3s HA validation](runbooks/k3s-ha-validation.md). The [HAProxy endpoint runbook](runbooks/host-haproxy.md) is part of the cluster setup. Once the cluster is ready, the [workload routing runbook](runbooks/k3s-workload-routing.md) applies and verifies the `v0.2.0` `whoami` workload.
+For a full replay, follow these runbooks in order. Each runbook links to the next suggested step; pause after any stage if you are not continuing the replay now.
+
+1. Check host capacity and prerequisites in the [host and VM baseline](runbooks/host-and-vm-baseline.md).
+2. Provision, start, and validate the guests in [Terraform VM provisioning](runbooks/terraform-libvirt-vms.md), including SSH access before proceeding to Ansible.
+3. Build the cluster with Ansible in the [K3s HA cluster runbook](runbooks/k3s-ha-cluster.md); configure the host API listener at the indicated point using the [HAProxy endpoint runbook](runbooks/host-haproxy.md).
+4. Verify quorum, node failure/recovery, and full restart in [K3s HA validation](runbooks/k3s-ha-validation.md).
+5. Apply and test the `v0.2.0` `whoami` workload using the [workload routing runbook](runbooks/k3s-workload-routing.md).
 
 For design and project status, read the [architecture](architecture.md) and [roadmap](roadmap.md).
 
