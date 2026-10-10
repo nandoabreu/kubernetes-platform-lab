@@ -66,7 +66,7 @@ The Checkpoint 2 demo is a small HTTP responder defined by versioned manifests u
 
 The operator applies repository manifests to the K3s API using `kubectl` and a private kubeconfig. Git versions the desired configuration and change history; Kubernetes stores and reconciles the live objects. This lab uses direct `kubectl apply` and does not configure a GitOps controller.
 
-Host-side HTTP access uses the packaged Traefik Ingress Controller and K3s ServiceLB: VM IPs on the private libvirt network expose Traefik on port `80`, and an Ingress rule routes a matching HTTP Host to the demo ClusterIP Service. This path is separate from the host HAProxy endpoint for the Kubernetes API. It does not expose the application to the home LAN or Internet and does not claim an externally highly available load balancer.
+Host-side HTTP access uses the packaged Traefik Ingress Controller and K3s ServiceLB: VM IPs on the private libvirt network expose Traefik on port `80`, and an Ingress rule routes a matching HTTP Host to the demo ClusterIP Service. ServiceLB advertises the node IPs individually; the Ingress Host rule does not provide a single stable virtual IP or DNS record. This path is separate from the host HAProxy endpoint for the Kubernetes API. It does not expose the application to the home LAN or Internet and does not claim an externally highly available load balancer.
 
 ## Failure model and limitations
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-The in-cluster portion of Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in this run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. The host-to-Service Ingress path has not yet been configured or tested; record that evidence before considering Checkpoint 2 complete. The node-level failure exercise remains in Checkpoint 3.
+Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in the initial run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. From the host, requests to each Traefik ServiceLB address (`10.77.0.11`, `.12`, and `.13`) returned HTTP `200` through the Ingress and identified different `whoami` Pods. This setup has no single stable host-side application address: ServiceLB advertises the three node IPs, while the Ingress Host is only an HTTP routing rule. The observed Traefik Deployment had one Pod on `k3s-1`; three ServiceLB addresses do not by themselves demonstrate controller high availability. Node-level failure validation remains in Checkpoint 3.
 
 ## Purpose and scope
 
@@ -88,7 +88,7 @@ The EndpointSlice should list ready Pod addresses selected by the Service. If it
 
 ## Route host traffic through Traefik
 
-The packaged Traefik controller is exposed by K3s ServiceLB. In this cluster, its LoadBalancer Service advertises `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`, the VM addresses. From the libvirt host, reaching one of these addresses on port `80` reaches Traefik; this path does not use the API HAProxy at `10.77.0.1:6443`. The LoadBalancer Service also reports a NodePort, but use the advertised VM address and port `80` for this exercise.
+The packaged Traefik controller is exposed by K3s ServiceLB. In this cluster, its LoadBalancer Service advertises `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`, the VM addresses. From the libvirt host, reaching one of these addresses on port `80` reaches Traefik; this path does not use the API HAProxy at `10.77.0.1:6443`. The LoadBalancer Service also reports a NodePort, but use the advertised VM address and port `80` for this exercise. ServiceLB provides one entry address per node, not a single stable virtual IP. The Ingress host `whoami.k3s-lab.test` selects an HTTP route and does not create DNS or a shared address.
 
 Before adding an Ingress rule, this request should reach Traefik and return its default `404` because no matching route exists yet:
 
