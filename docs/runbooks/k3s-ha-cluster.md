@@ -104,7 +104,7 @@ The commands run in a child Bash process so `set -e` and the restrictive `umask`
 
 ## Stable endpoint and remaining servers
 
-HAProxy is an independent, host-owned service. Follow the [Host HAProxy Endpoints runbook](host-haproxy.md#configure-the-stable-k3s-api-endpoint) to install it, add the narrowly scoped UFW rule, configure the API listener on `10.77.0.1:6443`, validate the listener, and update the host-side kubeconfig. Complete that API stage before joining `k3s-2` and `k3s-3`; they register through the stable endpoint. The same runbook documents the optional HTTP listener for the demo Ingress on `10.77.0.1:80` after Checkpoint 2.
+HAProxy is an independent, host-owned service used only for the stable Kubernetes API endpoint in this lab. Follow the [Host HAProxy API Endpoint runbook](host-haproxy.md#configure-the-stable-k3s-api-endpoint) to install it, add the narrowly scoped UFW rule, configure the API listener on `10.77.0.1:6443`, validate the listener, and update the host-side kubeconfig. Complete that API stage before joining `k3s-2` and `k3s-3`; they register through the stable endpoint. Application traffic uses K3s ServiceLB and Traefik instead.
 
 Only after those checks pass, validate SSH and Ansible access to both joiners. Then review the play's selected hosts and execute it; `serial: 1` joins one server at a time:
 
@@ -128,7 +128,7 @@ After all three nodes report `Ready` and API operations succeed through the stab
 2. Start the three equivalent VMs and verify their fixed addresses, time synchronisation, and bidirectional node connectivity; these network checks have been manually exercised.
 3. Review the Ansible inventory and playbook, then bootstrap only `k3s-1` with the pinned release and embedded etcd.
 4. Validate the single-node API locally and from the host, including TLS validation against the API certificate.
-5. Follow the [Host HAProxy Endpoints runbook](host-haproxy.md#configure-the-stable-k3s-api-endpoint) to install and validate the host API endpoint before joining additional servers.
+5. Follow the [Host HAProxy API Endpoint runbook](host-haproxy.md#configure-the-stable-k3s-api-endpoint) to install and validate the host API endpoint before joining additional servers.
 6. Join `k3s-2` and `k3s-3` sequentially through the stable endpoint using the same K3s version and server configuration.
 7. Verify all three nodes, control-plane availability, datastore health, and access through the stable API endpoint.
 8. Continue to the [K3s HA validation runbook](k3s-ha-validation.md) for failure, resource, and full-restart exercises.
@@ -145,6 +145,6 @@ The build procedure has been exercised through formation of the three-server clu
 
 ## Recovery and cleanup
 
-Terraform cleanup does not remove host-owned HAProxy or UFW changes. Follow the [Host HAProxy Endpoints runbook](host-haproxy.md#roll-back-the-k3s-api-endpoint) to remove only this lab's API listener and firewall rule safely. Do not remove the shared HAProxy package or restore a backup over later intentional changes; the host service may contain other configurations.
+Terraform cleanup does not remove host-owned HAProxy or UFW changes. Follow the [Host HAProxy API Endpoint runbook](host-haproxy.md#roll-back-the-k3s-api-endpoint) to remove only this lab's API listener and firewall rule safely. Do not remove the shared HAProxy package or restore a backup over later intentional changes; the host service may contain other configurations.
 
 VM deletion, etcd snapshot/restore, and full rebuild procedures are not yet defined. Add and test them before calling the cluster reproducible or using it for important data.

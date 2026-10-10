@@ -8,7 +8,7 @@ Roadmap Checkpoint 1 validation completed on 2026-10-09. Individual shutdown and
 
 - Run all commands from the repository root on the libvirt host unless a command explicitly opens an SSH session on a guest.
 - Complete the [K3s HA build runbook](k3s-ha-cluster.md); all three nodes must report `Ready` through the host-side kubeconfig using `https://10.77.0.1:6443`.
-- Confirm `kubectl get --raw='/readyz?verbose'` passes through the stable endpoint and HAProxy is logging backend/server selections to `/var/log/haproxy.log` as configured in the [Host HAProxy Endpoints runbook](host-haproxy.md).
+- Confirm `kubectl get --raw='/readyz?verbose'` passes through the stable endpoint and HAProxy is logging backend/server selections to `/var/log/haproxy.log` as configured in the [Host HAProxy API Endpoint runbook](host-haproxy.md).
 - Keep the administrative kubeconfig at `$HOME/.kube/k3s-lab.yaml` with mode `0600`; do not display or commit it.
 - Start from a healthy three-node cluster. Do not begin a failure test while a node is already unavailable or recovering.
 

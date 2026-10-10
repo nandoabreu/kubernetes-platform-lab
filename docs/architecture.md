@@ -37,7 +37,7 @@ Terraform owns only the lab network, VM domains, and VM disks. The selected stor
 
 All three VMs run the K3s server role. Each provides Kubernetes control-plane components and participates in the embedded etcd datastore. Three etcd members require a quorum of two and can tolerate one member being unavailable.
 
-The cluster API must have a stable endpoint reachable by clients when any one server is unavailable. The selected lab design is HAProxy on the libvirt host at `10.77.0.1:6443`, forwarding to the three K3s servers. The endpoint is outside the cluster and reachable from the host and lab guests; it is host-owned and does not provide host-level high availability. The [Host HAProxy Endpoints runbook](runbooks/host-haproxy.md) documents its listener, firewall rule, validation, and rollback.
+The cluster API must have a stable endpoint reachable by clients when any one server is unavailable. The selected lab design is HAProxy on the libvirt host at `10.77.0.1:6443`, forwarding to the three K3s servers. The endpoint is outside the cluster and reachable from the host and lab guests; it is host-owned and does not provide host-level high availability. The [Host HAProxy API Endpoint runbook](runbooks/host-haproxy.md) documents its listener, firewall rule, validation, and rollback.
 
 ## Workload and traffic
 
@@ -66,7 +66,7 @@ The Checkpoint 2 demo is a small HTTP responder defined by versioned manifests u
 
 The operator applies repository manifests to the K3s API using `kubectl` and a private kubeconfig. Git versions the desired configuration and change history; Kubernetes stores and reconciles the live objects. This lab uses direct `kubectl apply` and does not configure a GitOps controller.
 
-Host-side HTTP access uses the packaged Traefik Ingress Controller and K3s ServiceLB: VM IPs on the private libvirt network expose Traefik on port `80`, and an Ingress rule routes a matching HTTP Host to the demo ClusterIP Service. ServiceLB advertises the node IPs individually; the Ingress Host rule does not provide a single stable virtual IP or DNS record. An optional host HAProxy listener at `10.77.0.1:80` can provide one address by forwarding to the three Traefik listeners; it is host-owned and shares the physical host failure boundary. Both paths are separate from the host HAProxy endpoint for the Kubernetes API on port `6443`. Neither exposes the application to the home LAN or Internet.
+K3s ServiceLB exposes the same Traefik gateway on each node IP. Entering through any one advertised listener does not bind application traffic to that node: Traefik applies the HTTP Host/path rule, and the demo ClusterIP Service selects ready Pods across the cluster network. The three node addresses are alternate gateway listeners, not one external address per application replica. A corporate environment normally places DNS and a stable cloud or datacenter load-balancer address in front of the gateway so consumers do not know node addresses; that external network integration is outside this checkpoint. The host HAProxy remains dedicated to the Kubernetes API on port `6443` and is not part of the demo application path. Neither endpoint is exposed to the home LAN or Internet.
 
 ## Failure model and limitations
 

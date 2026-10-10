@@ -2,7 +2,7 @@
 
 ## Status
 
-Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in the initial run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. From the host, requests to each Traefik ServiceLB address (`10.77.0.11`, `.12`, and `.13`) returned HTTP `200` through the Ingress and identified different `whoami` Pods. This setup has no single stable host-side application address: ServiceLB advertises the three node IPs, while the Ingress Host is only an HTTP routing rule. The observed Traefik Deployment had one Pod on `k3s-1`; three ServiceLB addresses do not by themselves demonstrate controller high availability. Node-level failure validation remains in Checkpoint 3.
+Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in the initial run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. Repeated host requests entered through only `10.77.0.11:80` and returned HTTP `200` from Pods at `10.42.0.12`, `10.42.1.7`, and `10.42.2.8`, proving that one Traefik entry listener can reach ready application Pods across all three nodes. The observed Traefik Deployment had one Pod on `k3s-1`; this exercise validates routing, not ingress-controller high availability. Node-level failure validation remains in Checkpoint 3.
 
 ## Purpose and scope
 
@@ -88,7 +88,29 @@ The EndpointSlice should list ready Pod addresses selected by the Service. If it
 
 ## Route host traffic through Traefik
 
-The packaged Traefik controller is exposed by K3s ServiceLB. In this cluster, its LoadBalancer Service advertises `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`, the VM addresses. From the libvirt host, reaching one of these addresses on port `80` reaches Traefik; this path does not use the API HAProxy at `10.77.0.1:6443`. The LoadBalancer Service also reports a NodePort, but use the advertised VM address and port `80` for this exercise. ServiceLB provides one entry address per node, not a single stable virtual IP. The Ingress host `whoami.k3s-lab.test` selects an HTTP route and does not create DNS or a shared address.
+The packaged Traefik controller is exposed by K3s ServiceLB. Its LoadBalancer Service advertises `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`, but these addresses are equivalent entry listeners for the same Traefik gateway; they do not map one-to-one to the `whoami` Pods or constrain a request to Pods on that node. Entering through any one listener allows Traefik and the application Service to reach any ready `whoami` Pod across the cluster. The first address is used consistently below so the test demonstrates Kubernetes routing rather than node-listener availability.
+
+```mermaid
+flowchart LR
+    client["Client on libvirt host"] -->|"HTTP to one entry<br/>10.77.0.11:80"| entry["K3s ServiceLB<br/>Traefik node listener"]
+    entry --> gateway["Traefik<br/>HTTP gateway"]
+    gateway -->|"Host/path selects whoami"| backend["Ready backend for<br/>Service whoami"]
+    backend --> pod1["whoami Pod<br/>10.42.0.x"]
+    backend --> pod2["whoami Pod<br/>10.42.1.x"]
+    backend --> pod3["whoami Pod<br/>10.42.2.x"]
+```
+
+This is the data path: the request enters once, and the cluster networking can reach a ready backend on any node. The control plane is not a request hop; it reconciles the objects that configure this path. The Ingress tells Traefik which Service matches the Host/path, the Service selector identifies the application Pods, and the EndpointSlice records their ready IPs. An Ingress controller may use those endpoints directly rather than sending packets through the Service ClusterIP, but the Service remains the stable application abstraction.
+
+```mermaid
+flowchart TB
+    ingress["Ingress<br/>whoami.k3s-lab.test / → whoami:80"] -.->|"configures"| gateway["Traefik"]
+    deployment["Deployment<br/>replicas: 3"] -.->|"maintains"| pods["whoami Pods"]
+    service["Service<br/>selector: whoami"] -.->|"selects"| pods
+    endpoints["EndpointSlice<br/>ready Pod IPs"] -.->|"publishes backends for"| service
+```
+
+These dotted relationships are configuration and reconciliation, not additional packet hops.
 
 Before adding an Ingress rule, this request should reach Traefik and return its default `404` because no matching route exists yet:
 
@@ -104,15 +126,13 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get ingress
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo describe ingress whoami
 ```
 
-The rule matches the HTTP Host `whoami.k3s-lab.test` and forwards requests to Service `whoami` on port `80`. `curl --resolve` supplies a temporary hostname-to-IP mapping for each request, so there is no need to edit `/etc/hosts` or configure DNS. Test the three VM addresses from the host:
+The rule matches the HTTP Host `whoami.k3s-lab.test` and forwards requests to Service `whoami` on port `80`. `curl --resolve` supplies a temporary hostname-to-IP mapping for this command, so there is no need to edit `/etc/hosts` or configure DNS. Send repeated requests to one Traefik entry listener and print the serving Pod IP:
 
 ```sh
-for node_ip in 10.77.0.11 10.77.0.12 10.77.0.13; do curl --include --fail --show-error --resolve "whoami.k3s-lab.test:80:$node_ip" http://whoami.k3s-lab.test/; done
+for request in $(seq 1 10); do curl --silent --fail --show-error --resolve 'whoami.k3s-lab.test:80:10.77.0.11' http://whoami.k3s-lab.test/ | grep '^IP: 10\.42\.'; done
 ```
 
-Each request should return the `whoami` response instead of Traefik's default `404`; the response identifies the serving Pod. If the connection times out, check host-to-VM reachability and the Traefik LoadBalancer/ServiceLB Pods. If Traefik returns `404`, check the IngressClass, Host header, rule, and namespace Service name/port. This exposes the demo only on private lab VM addresses, not to the home LAN or Internet.
-
-To use one host-side address instead of the three VM addresses, optionally follow the [Host HAProxy Endpoints runbook](host-haproxy.md#add-one-host-side-address-for-the-demo-ingress). It adds a host-owned listener at `10.77.0.1:80` in front of the three Traefik node listeners. The Ingress rule remains unchanged; this HAProxy listener is not required for in-cluster Service routing or for the individual-IP Ingress test above.
+The output should eventually contain Pod IPs from different node Pod CIDRs, such as `10.42.0.x`, `10.42.1.x`, and `10.42.2.x`, while every request still enters through `10.77.0.11`. This demonstrates that the entry node is not the application backend: Traefik applies the Ingress rule and uses the ready backends represented by the `whoami` Service. It does not guarantee strict round-robin order. If the connection times out, check host-to-VM reachability and the Traefik LoadBalancer/ServiceLB Pods. If Traefik returns `404`, check the IngressClass, Host header, rule, and namespace Service name/port. The other advertised node IPs are alternate listeners useful for later failure testing, not addresses the application consumer must iterate.
 
 ## Observe reconciliation and scheduler decisions
 
