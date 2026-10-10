@@ -47,10 +47,14 @@ The probe calls `whoami.platform-demo.svc.cluster.local` directly and is pinned 
 Do not start this probe during the baseline checks. In each failure exercise below, first select the VM to stop; then run the probe from a different, healthy node in Terminal A. Keep Terminal A open during the outage and use Terminal B for the VM command.
 
 ```sh
+read -r -p 'VM to stop for this exercise (k3s-1, k3s-2, or k3s-3): ' failed_node
+case "$failed_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected VM name: %s\n' "$failed_node" >&2; exit 1 ;; esac
+whoami_nodes=$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -l app.kubernetes.io/name=whoami -o jsonpath='{range .items[*]}{.spec.nodeName}{" "}{end}')
+case " $whoami_nodes " in *" $failed_node "*) ;; *) printf 'No whoami Pod is assigned to %s\n' "$failed_node" >&2; exit 1 ;; esac
 read -r -p 'Healthy node for the Service probe: ' probe_node
-test -n "$probe_node"
+case "$probe_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected probe node: %s\n' "$probe_node" >&2; exit 1 ;; esac
 test "$probe_node" != "$failed_node"
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get node "$probe_node"
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes "$failed_node" "$probe_node"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo run service-check --rm -i --restart=Never --image=curlimages/curl:8.12.1 --overrides="{\"spec\":{\"nodeName\":\"${probe_node}\"}}" --command -- sh -c 'while true; do printf "\n%s\n" "$(date -u +%FT%TZ)"; curl --connect-timeout 1 --max-time 3 --silent --show-error --write-out "\nHTTP %{http_code}\n" http://whoami.platform-demo.svc.cluster.local/; sleep 1; done'
 ```
 
@@ -64,11 +68,9 @@ Scale the Deployment to one replica without changing the repository manifest, wa
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo scale deployment/whoami --replicas=1
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo rollout status deployment/whoami
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o wide
-read -r -p 'VM hosting the sole whoami Pod (k3s-1, k3s-2, or k3s-3): ' failed_node
-case "$failed_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected VM name: %s\n' "$failed_node" >&2; exit 1 ;; esac
 ```
 
-In Terminal A, start the Service probe described above, choose a different healthy `probe_node`, and confirm it returns HTTP `200` from the only `whoami` Pod. In Terminal B, enter the same `failed_node`, check that it is running, and then cut power to that one VM:
+In Terminal A, start the Service probe described above. Enter the VM hosting the only `whoami` Pod as `failed_node`, then choose a different healthy node for `probe_node`; confirm the probe returns HTTP `200`. In Terminal B, enter the same `failed_node`, check that it is running, and then cut power to that one VM:
 
 ```sh
 read -r -p 'Enter the same VM selected for the sole whoami Pod: ' failed_node
@@ -135,11 +137,9 @@ git diff -- kubernetes/demo/whoami.yaml
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" apply -f kubernetes/demo/whoami.yaml
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo rollout status deployment/whoami
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o wide
-read -r -p 'VM to stop for this exercise (k3s-1, k3s-2, or k3s-3): ' failed_node
-case "$failed_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected VM name: %s\n' "$failed_node" >&2; exit 1 ;; esac
 ```
 
-Do not begin the failure until the three Ready `whoami` Pods are on three different nodes. Record which node hosts the single Traefik Pod. In Terminal A, start the Service probe described above on a different healthy node and confirm responses identify all three replicas before the outage.
+Do not begin the failure until the three Ready `whoami` Pods are on three different nodes. Record which node hosts the single Traefik Pod. In Terminal A, start the Service probe described above, select the VM to stop and a different healthy probe node, and confirm responses identify all three replicas before the outage.
 
 In a second terminal, enter the same `failed_node` selected above, confirm it is running, then abruptly stop it with `virsh destroy` as in Exercise 1. Continue watching node, Pod, EndpointSlice, API, and probe state. After the unavailable node is detected, record that the Service still returns HTTP `200` from the two remaining Ready replicas, the outage window if any, and what happens to the Pod previously assigned to the failed node. Do not require a replacement Pod to become Ready while a node is unavailable; the hard spread constraint may leave it Pending until the failed node returns.
 
