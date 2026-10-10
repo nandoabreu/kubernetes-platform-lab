@@ -2,17 +2,17 @@
 
 ## Status
 
-Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in this run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. The node-level failure exercise and a placement constraint were not tested; those remain follow-up work for Checkpoint 3.
+The in-cluster portion of Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in this run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. The host-to-Service Ingress path has not yet been configured or tested; record that evidence before considering Checkpoint 2 complete. The node-level failure exercise remains in Checkpoint 3.
 
 ## Purpose and scope
 
 This runbook introduces Kubernetes workload configuration using a small HTTP responder. You will find its YAML in the repository, change the desired replica count, apply that configuration through the Kubernetes API, and inspect the Pods, their nodes, Service endpoints, events, and current resource use. The exercises prepare for Checkpoint 3, which validates recovery during real node and workload failures.
 
-The demo is intentionally small and does not configure external ingress, persistent storage, TLS, autoscaling, monitoring, or host-level access. All three VMs share one physical host, so the lab demonstrates node-level control-plane resilience, not host-level high availability.
+The demo is intentionally small and does not configure persistent storage, TLS, autoscaling, monitoring, or access from the home LAN or Internet. Its Ingress is reachable from the libvirt host through the lab VM addresses. All three VMs share one physical host, so the lab demonstrates node-level control-plane resilience, not host-level high availability.
 
 ## Kubernetes objects and configuration flow
 
-The example configuration is stored at [`kubernetes/demo/whoami.yaml`](../../kubernetes/demo/whoami.yaml) and is versioned with the repository. It defines a Namespace, a Deployment, and a ClusterIP Service. The `kubectl` kubeconfig is stored separately at `$HOME/.kube/k3s-lab.yaml`; it contains API access details and credentials, not the workload definition, and must remain private and outside Git.
+The workload configuration is stored in versioned manifests under `kubernetes/demo/`: [`whoami.yaml`](../../kubernetes/demo/whoami.yaml) defines the Namespace, Deployment, and ClusterIP Service, while [`whoami-ingress.yaml`](../../kubernetes/demo/whoami-ingress.yaml) defines the HTTP route through Traefik. The `kubectl` kubeconfig is stored separately at `$HOME/.kube/k3s-lab.yaml`; it contains API access details and credentials, not the workload definition, and must remain private and outside Git.
 
 The Deployment describes the desired Pod count and template. Kubernetes creates a ReplicaSet to maintain that count, and the scheduler assigns each new Pod to an eligible node. The Service selects Pods by label and routes connections to ready endpoints. The Service does not create or place Pods. K3s's control plane continually reconciles observed state toward the desired state in the API.
 
@@ -23,12 +23,15 @@ The normal learning loop is: edit the YAML in the repository, review the change,
 - Complete the [K3s HA build runbook](k3s-ha-cluster.md) and [failure/restart validation](k3s-ha-validation.md); all three nodes should be `Ready`.
 - Run commands from the repository root on the libvirt host and use the private kubeconfig at `$HOME/.kube/k3s-lab.yaml`.
 - Confirm the cluster can pull the `traefik/whoami:v1.11.0` image from its container registry.
+- Confirm the packaged IngressClass is named `traefik` and the Traefik LoadBalancer Service advertises the lab VM addresses.
 
 Check which cluster context the kubeconfig selects before applying changes:
 
 ```sh
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" config current-context
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes -o wide
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get ingressclass
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n kube-system get service traefik -o wide
 ```
 
 ## Deploy one replica
@@ -82,6 +85,32 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get endpointsli
 ```
 
 The EndpointSlice should list ready Pod addresses selected by the Service. If it is empty, check the Service selector, Pod labels, readiness, and recent events.
+
+## Route host traffic through Traefik
+
+The packaged Traefik controller is exposed by K3s ServiceLB. In this cluster, its LoadBalancer Service advertises `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`, the VM addresses. From the libvirt host, reaching one of these addresses on port `80` reaches Traefik; this path does not use the API HAProxy at `10.77.0.1:6443`. The LoadBalancer Service also reports a NodePort, but use the advertised VM address and port `80` for this exercise.
+
+Before adding an Ingress rule, this request should reach Traefik and return its default `404` because no matching route exists yet:
+
+```sh
+curl --include --connect-timeout 2 http://10.77.0.11/
+```
+
+Apply the versioned Ingress resource after the `whoami` Service exists:
+
+```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" apply -f kubernetes/demo/whoami-ingress.yaml
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get ingress
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo describe ingress whoami
+```
+
+The rule matches the HTTP Host `whoami.k3s-lab.test` and forwards requests to Service `whoami` on port `80`. `curl --resolve` supplies a temporary hostname-to-IP mapping for each request, so there is no need to edit `/etc/hosts` or configure DNS. Test the three VM addresses from the host:
+
+```sh
+for node_ip in 10.77.0.11 10.77.0.12 10.77.0.13; do curl --include --fail --show-error --resolve "whoami.k3s-lab.test:80:$node_ip" http://whoami.k3s-lab.test/; done
+```
+
+Each request should return the `whoami` response instead of Traefik's default `404`; the response identifies the serving Pod. If the connection times out, check host-to-VM reachability and the Traefik LoadBalancer/ServiceLB Pods. If Traefik returns `404`, check the IngressClass, Host header, rule, and namespace Service name/port. This exposes the demo only on private lab VM addresses, not to the home LAN or Internet.
 
 ## Observe reconciliation and scheduler decisions
 
@@ -188,10 +217,11 @@ Keep the reviewed manifest in Git so another operator can inspect and reproduce 
 
 ## Cleanup and exit evidence
 
-Remove only the demo namespace and its resources:
+Remove the Ingress route, then the demo namespace and its remaining resources:
 
 ```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" delete -f kubernetes/demo/whoami-ingress.yaml
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" delete -f kubernetes/demo/whoami.yaml
 ```
 
-Record the one-Pod starting placement, the three-Pod placement, successful responses from replicas through the Service, replacement-Pod scheduling evidence, the ready EndpointSlice, and current resource observations. Checkpoint 2 is complete when requests succeed through the Service and responses expose which replica served them. Controlled node-failure recovery is validated in Checkpoint 3.
+Record the one-Pod starting placement, the three-Pod placement, successful responses from replicas through the Service and host-side Ingress, replacement-Pod scheduling evidence, the ready EndpointSlice, and current resource observations. Checkpoint 2 is complete when in-cluster and host-side requests reach the HTTP workload through their documented routes. Controlled node-failure recovery is validated in Checkpoint 3.

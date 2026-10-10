@@ -26,7 +26,7 @@ The three control-plane nodes can tolerate one K3s server being unavailable beca
 | `v0.1.0` | A validated three-server K3s cluster with embedded etcd, a host-side HAProxy API endpoint, one-node failure exercises, and full lab restart validation | Application workloads, workload failure exercises, etcd backup/restore, or a production-ready platform |
 | `v0.1.1` | Public-project documentation, licensing, portable entry points, and static validation for the existing `v0.1.0` capability | New cluster or workload capability |
 
-Checkpoint 2 adds a versioned HTTP workload and Kubernetes Service; its validation and replay steps are in the [workload routing runbook](docs/runbooks/k3s-workload-routing.md). The next functional checkpoint exercises node and workload failures. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
+Checkpoint 2 adds a versioned HTTP workload, Kubernetes Service, and host-side route through Traefik Ingress on the private lab network. Follow the [workload routing runbook](docs/runbooks/k3s-workload-routing.md) to apply and validate it. The next functional checkpoint exercises node and workload failures. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
 
 ## Requirements
 
