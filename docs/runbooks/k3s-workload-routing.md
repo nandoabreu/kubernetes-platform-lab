@@ -90,6 +90,8 @@ The EndpointSlice should list ready Pod addresses selected by the Service. If it
 
 The packaged Traefik controller is exposed by K3s ServiceLB. Its LoadBalancer Service advertises `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`, but these addresses are equivalent entry listeners for the same Traefik gateway; they do not map one-to-one to the `whoami` Pods or constrain a request to Pods on that node. Entering through any one listener allows Traefik and the application Service to reach any ready `whoami` Pod across the cluster. The first address is used consistently below so the test demonstrates Kubernetes routing rather than node-listener availability.
 
+K3s installs the packaged Traefik controller and ServiceLB as part of cluster setup; there is no separate Traefik install or enable command in this workload runbook. The `whoami.yaml` manifest creates the application Deployment and ClusterIP Service, but no Ingress route. Apply `whoami-ingress.yaml` below to tell Traefik which Host and path should reach that Service.
+
 ```mermaid
 flowchart LR
     client["Client on libvirt host"] -->|"HTTP to one entry<br/>10.77.0.11:80"| entry["K3s ServiceLB<br/>Traefik node listener"]
@@ -112,13 +114,13 @@ flowchart TB
 
 These dotted relationships are configuration and reconciliation, not additional packet hops.
 
-Before adding an Ingress rule, this request should reach Traefik and return its default `404` because no matching route exists yet:
+Before adding an Ingress rule, this request should reach the Traefik listener and return its default `404` because the request has no matching Host rule yet. This is an expected listener check, not a failure of the `whoami` Pods or Service:
 
 ```sh
 curl --include --connect-timeout 2 http://10.77.0.11/
 ```
 
-Apply the versioned Ingress resource after the `whoami` Service exists:
+This is the step that registers the `whoami.k3s-lab.test` route with Traefik. Apply the versioned Ingress resource after the `whoami` Service exists:
 
 ```sh
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" apply -f kubernetes/demo/whoami-ingress.yaml
