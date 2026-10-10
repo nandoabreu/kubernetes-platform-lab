@@ -129,10 +129,10 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo describe ingres
 The rule matches the HTTP Host `whoami.k3s-lab.test` and forwards requests to Service `whoami` on port `80`. `curl --resolve` supplies a temporary hostname-to-IP mapping for this command, so there is no need to edit `/etc/hosts` or configure DNS. Send repeated requests to one Traefik entry listener and print the serving Pod IP:
 
 ```sh
-for request in $(seq 1 10); do curl --silent --fail --show-error --resolve 'whoami.k3s-lab.test:80:10.77.0.11' http://whoami.k3s-lab.test/ | grep '^IP: 10\.42\.'; done
+for request in $(seq 1 10); do curl --silent --fail --show-error --resolve 'whoami.k3s-lab.test:80:10.77.0.11' http://whoami.k3s-lab.test/ | grep '^IP: ' | grep -Ev '^IP: (127\.0\.0\.1|::1|fe80:)'; done
 ```
 
-The output should eventually contain Pod IPs from different node Pod CIDRs, such as `10.42.0.x`, `10.42.1.x`, and `10.42.2.x`, while every request still enters through `10.77.0.11`. This demonstrates that the entry node is not the application backend: Traefik applies the Ingress rule and uses the ready backends represented by the `whoami` Service. It does not guarantee strict round-robin order. If the connection times out, check host-to-VM reachability and the Traefik LoadBalancer/ServiceLB Pods. If Traefik returns `404`, check the IngressClass, Host header, rule, and namespace Service name/port. The other advertised node IPs are alternate listeners useful for later failure testing, not addresses the application consumer must iterate.
+The filters retain reported interface addresses while excluding IPv4/IPv6 loopback and link-local IPv6; they do not assume a fixed Pod CIDR. Compare the output with `kubectl get pods -o wide`. It should eventually identify Pods on different nodes while every request still enters through `10.77.0.11`; in the validated cluster those addresses used the `10.42.0.x`, `10.42.1.x`, and `10.42.2.x` node Pod CIDRs. This demonstrates that the entry node is not the application backend: Traefik applies the Ingress rule and uses the ready backends represented by the `whoami` Service. It does not guarantee strict round-robin order. If the connection times out, check host-to-VM reachability and the Traefik LoadBalancer/ServiceLB Pods. If Traefik returns `404`, check the IngressClass, Host header, rule, and namespace Service name/port. The other advertised node IPs are alternate listeners useful for later failure testing, not addresses the application consumer must iterate.
 
 ## Observe reconciliation and scheduler decisions
 
