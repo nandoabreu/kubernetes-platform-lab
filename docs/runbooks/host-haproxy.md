@@ -24,11 +24,14 @@ flowchart LR
 
 HAProxy is outside Kubernetes in this flow. It provides one API address to clients while forwarding TCP connections to the server VMs; it does not terminate API TLS or make the physical host highly available.
 
-### Single host-side address for the demo Ingress
+### Direct or single-address host access to the demo Ingress
 
 ```mermaid
 flowchart LR
-    client["curl / browser<br/>Host: whoami.k3s-lab.test"] -->|"HTTP to 10.77.0.1:80"| proxy["Host HAProxy<br/>TCP pass-through"]
+    client["curl / browser<br/>Host: whoami.k3s-lab.test"] -->|"optional: HTTP to 10.77.0.1:80"| proxy["Host HAProxy<br/>TCP pass-through"]
+    client -->|"direct option<br/>10.77.0.11:80"| slb1
+    client -->|"direct option<br/>10.77.0.12:80"| slb2
+    client -->|"direct option<br/>10.77.0.13:80"| slb3
 
     proxy -->|"TCP :80"| slb1
     proxy -->|"TCP :80"| slb2
@@ -49,16 +52,17 @@ flowchart LR
     slb1 --> traefikService
     slb2 --> traefikService
     slb3 --> traefikService
-    traefikService["K3s ServiceLB / Traefik Service<br/>LoadBalancer · port 80"] --> traefik["Traefik controller Pod<br/>one replica observed"]
+    traefikService["Traefik Service<br/>type LoadBalancer · port 80<br/>implemented by K3s ServiceLB"] --> traefik["Traefik controller Pod<br/>one replica observed"]
 
     traefik -->|"HTTP request with matching Host/path"| appService
     traefik -.->|"watches routing configuration"| ingress["Ingress resource<br/>Host whoami.k3s-lab.test<br/>/ → whoami:80"]
     ingress -.->|"routes to"| appService["ClusterIP Service<br/>whoami:80"]
-    appService --> endpoints["EndpointSlice<br/>ready Pod endpoints"]
-    endpoints --> pods["whoami Deployment<br/>three HTTP Pods"]
+    appService -->|"routes to ready endpoints"| pods["whoami Deployment<br/>three HTTP Pods"]
+    appService -.->|"backends recorded in"| endpoints["EndpointSlice<br/>ready Pod IPs"]
+    endpoints -.->|"lists"| pods
 ```
 
-The host HAProxy balances new TCP connections across the three VM listeners and preserves the HTTP Host header. K3s ServiceLB on each node forwards to the Traefik Service; Traefik applies the Ingress rule and sends the request to the application Service, which selects ready Pod endpoints. The Ingress object configures routing but does not provide the host address. This optional path has a single HAProxy host and the observed Traefik controller had one replica, so it is not an application-edge HA claim.
+There are two ways into the same K3s path: connect directly to any VM address on port `80`, or use the optional host HAProxy address `10.77.0.1:80`, which forwards connections to those VM listeners. The host HAProxy only provides a single front-door address; omit it if direct node addresses meet the exercise need. K3s ServiceLB is the implementation exposing Traefik's `LoadBalancer` Service on the node IPs, not a separate host-level load balancer. Traefik applies the Ingress Host/path rule and sends requests to the application ClusterIP Service, which routes to ready `whoami` Pods using its EndpointSlice. The application Service is the layer that distributes requests across the app replicas. The optional host HAProxy and the observed single Traefik Pod do not provide host- or ingress-controller high availability.
 
 ## Install HAProxy
 
@@ -140,7 +144,7 @@ sudo tail -f /var/log/haproxy.log
 
 ## Add one host-side address for the demo Ingress
 
-This step is optional. First complete the [workload routing runbook](k3s-workload-routing.md) through successful HTTP `200` responses from all three VM addresses. The Traefik LoadBalancer Service listens on each VM IP, while this host HAProxy listener provides one convenient address, `10.77.0.1:80`, for clients on the libvirt subnet.
+This step is optional. First complete the [workload routing runbook](k3s-workload-routing.md) through successful HTTP `200` responses from all three VM addresses. A client can access Traefik directly through any advertised VM IP on port `80`; this host HAProxy listener is only needed when one convenient address, `10.77.0.1:80`, is desired on the libvirt subnet.
 
 Before binding the host address, inspect existing listeners and HAProxy configuration for a conflicting port-`80` bind. Do not replace or repurpose an unrelated host frontend:
 
