@@ -1,5 +1,9 @@
 # K3s Workload Routing and Scheduling
 
+## Status
+
+Checkpoint 2 was validated by the owner on 2026-10-10. The manifest was applied first with one replica and then with three; the temporary in-cluster client reached the single responder and then different responders through the Service. All three Pods were Ready and, in this run without a placement constraint, landed one per node. The EndpointSlice listed the three Pod endpoints, Pod deletion/recreation was observed with `--watch`, and `kubectl top` returned node and Pod metrics. The node-level failure exercise and a placement constraint were not tested; those remain follow-up work for Checkpoint 3.
+
 ## Purpose and scope
 
 This runbook introduces Kubernetes workload configuration using a small HTTP responder. You will find its YAML in the repository, change the desired replica count, apply that configuration through the Kubernetes API, and inspect the Pods, their nodes, Service endpoints, events, and current resource use. The exercises prepare for Checkpoint 3, which validates recovery during real node and workload failures.
@@ -93,10 +97,25 @@ In another terminal, inspect recent namespace events:
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get events --sort-by=.metadata.creationTimestamp
 ```
 
-Delete one Pod managed by the Deployment to observe controller reconciliation without shutting down a VM:
+Deleting a healthy Pod is a controller-reconciliation exercise, not a way to capture an application crash. First choose a Pod name from `get pods -o wide`, inspect it, and capture its current logs and events before deletion. The interactive prompt avoids accidentally selecting a different Pod:
 
 ```sh
-pod_name=$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o jsonpath='{.items[0].metadata.name}')
+read -r -p 'Pod name to inspect and delete: ' pod_name
+test -n "$pod_name"
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo describe pod "$pod_name"
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs "$pod_name" --all-containers=true
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get events --sort-by=.metadata.creationTimestamp
+```
+
+If `RESTARTS` is greater than zero and a container previously crashed in this still-existing Pod, retrieve that previous container instance's logs before deleting the Pod:
+
+```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs "$pod_name" --all-containers=true --previous
+```
+
+Now delete the selected Pod and observe the replacement:
+
+```sh
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo delete pod "$pod_name"
 ```
 
@@ -104,16 +123,19 @@ The ReplicaSet creates a replacement Pod with a new name. The scheduler selects 
 
 This is replacement, not moving the same Pod. During an actual node failure, Kubernetes first has to detect the missing node; the old Pod can remain assigned to that node while it is unavailable. With one replica, the Service can have no ready backend until a replacement is scheduled and becomes ready. With three replicas, service traffic can continue through other ready replicas, provided replicas are not all lost together and remaining nodes have capacity. The complete node shutdown exercise belongs to Checkpoint 3; do not shut down a VM as part of this Checkpoint 2 runbook.
 
-When a Pod is pending, restarting, or missing from Service endpoints, select its name from `kubectl get pods -o wide`, then inspect its description, logs, and events:
+Troubleshooting depends on the Pod's current state. For a Pod that still exists, select its name from `kubectl get pods -o wide` and inspect its description, logs, and events before deleting or replacing it:
 
 ```sh
-pod_name=$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o jsonpath='{.items[0].metadata.name}')
+read -r -p 'Pod name to inspect: ' pod_name
+test -n "$pod_name"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo describe pod "$pod_name"
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs "$pod_name"
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs "$pod_name" --all-containers=true
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get events --sort-by=.metadata.creationTimestamp
 ```
 
-`FailedScheduling` events commonly indicate insufficient allocatable resources, node taints, or placement constraints. Pod events and container state help distinguish scheduling problems from image-pull, startup, and readiness failures.
+For `CrashLoopBackOff` or a non-zero restart count, also inspect the previous container instance with `kubectl logs "$pod_name" --all-containers=true --previous`; this only works while the Pod still exists and its previous container logs are available. `FailedScheduling` events commonly indicate insufficient allocatable resources, node taints, or placement constraints. `ImagePullBackOff` events point to image name, registry access, or credentials. A Pod that is `Running` but absent from Service endpoints may not be Ready; inspect its readiness probe, labels, and the Service's EndpointSlice.
+
+If a Pod was explicitly deleted and its replacement has already appeared, `describe` and `logs` against the old name return `NotFound`: the old Pod object and its container-local logs are gone. Recent Kubernetes events may still record scheduling, deletion, and replacement, but events expire and are not durable logs. For retained application logs after Pod deletion, a cluster needs centralized logging; this lab does not install that component. The `whoami` Pod is a healthy test server, so manually deleting it should not produce an application traceback.
 
 ## Inspect current resource pressure
 
