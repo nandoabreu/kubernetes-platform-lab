@@ -12,6 +12,54 @@ The API endpoint is required by the [K3s HA cluster build runbook](k3s-ha-cluste
 
 The lab host is `10.77.0.1` on the private libvirt network; the K3s VMs are `10.77.0.11`, `10.77.0.12`, and `10.77.0.13`. UFW denies incoming traffic by default. The rules below allow only the libvirt subnet to reach the host listeners. The NAT network does not expose these listeners to the home LAN or Internet.
 
+## Endpoint topologies
+
+### Stable K3s API endpoint
+
+```mermaid
+flowchart LR
+    client["kubectl / Headlamp<br/>on the libvirt host"] -->|"HTTPS to 10.77.0.1:6443"| proxy["Host HAProxy<br/>TCP pass-through"]
+    proxy -->|"TCP :6443<br/>round-robin across healthy listeners"| apis["K3s API servers<br/>10.77.0.11-.13:6443"]
+```
+
+HAProxy is outside Kubernetes in this flow. It provides one API address to clients while forwarding TCP connections to the server VMs; it does not terminate API TLS or make the physical host highly available.
+
+### Single host-side address for the demo Ingress
+
+```mermaid
+flowchart LR
+    client["curl / browser<br/>Host: whoami.k3s-lab.test"] -->|"HTTP to 10.77.0.1:80"| proxy["Host HAProxy<br/>TCP pass-through"]
+
+    proxy -->|"TCP :80"| slb1
+    proxy -->|"TCP :80"| slb2
+    proxy -->|"TCP :80"| slb3
+
+    subgraph nodes["K3s VMs on the private libvirt network"]
+        subgraph node1["k3s-1 · 10.77.0.11"]
+            slb1["svclb-traefik Pod<br/>host port 80"]
+        end
+        subgraph node2["k3s-2 · 10.77.0.12"]
+            slb2["svclb-traefik Pod<br/>host port 80"]
+        end
+        subgraph node3["k3s-3 · 10.77.0.13"]
+            slb3["svclb-traefik Pod<br/>host port 80"]
+        end
+    end
+
+    slb1 --> traefikService
+    slb2 --> traefikService
+    slb3 --> traefikService
+    traefikService["K3s ServiceLB / Traefik Service<br/>LoadBalancer · port 80"] --> traefik["Traefik controller Pod<br/>one replica observed"]
+
+    traefik -->|"HTTP request with matching Host/path"| appService
+    traefik -.->|"watches routing configuration"| ingress["Ingress resource<br/>Host whoami.k3s-lab.test<br/>/ → whoami:80"]
+    ingress -.->|"routes to"| appService["ClusterIP Service<br/>whoami:80"]
+    appService --> endpoints["EndpointSlice<br/>ready Pod endpoints"]
+    endpoints --> pods["whoami Deployment<br/>three HTTP Pods"]
+```
+
+The host HAProxy balances new TCP connections across the three VM listeners and preserves the HTTP Host header. K3s ServiceLB on each node forwards to the Traefik Service; Traefik applies the Ingress rule and sends the request to the application Service, which selects ready Pod endpoints. The Ingress object configures routing but does not provide the host address. This optional path has a single HAProxy host and the observed Traefik controller had one replica, so it is not an application-edge HA claim.
+
 ## Install HAProxy
 
 Run the commands on the libvirt host after the first K3s API server has been validated directly at `10.77.0.11:6443`:
