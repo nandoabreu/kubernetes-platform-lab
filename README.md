@@ -26,8 +26,9 @@ The three control-plane nodes can tolerate one K3s server being unavailable beca
 | `v0.1.0` | A validated three-server K3s cluster with embedded etcd, a host-side HAProxy API endpoint, one-node failure exercises, and full lab restart validation | Application workloads, workload failure exercises, etcd backup/restore, or a production-ready platform |
 | `v0.1.1` | Public-project documentation, licensing, portable entry points, and static validation for the existing `v0.1.0` capability | New cluster or workload capability |
 | `v0.2.0` | A versioned three-replica HTTP workload, ClusterIP Service, Traefik Ingress, and verified host access through K3s ServiceLB node listeners | Node/VM failure exercises, guaranteed cross-node Pod placement, a single stable application VIP, ingress-controller HA, or a production-ready platform |
+| `v0.2.1` | The recommended, ordered replay path for the `v0.2.0` workload, including VM validation, cluster setup, and the distinction between K3s-packaged Traefik and the `whoami` Ingress route | New cluster or workload capability; Checkpoint 3 failure and recovery exercises |
 
-Checkpoint 2 is delivered by `v0.2.0`. The [documentation index](docs/README.md) gives the ordered replay path to that release. The next functional checkpoint exercises node and workload failures; the [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
+Checkpoint 2's workload capability was delivered by `v0.2.0`; use `v0.2.1` as the recommended replay baseline. The [documentation index](docs/README.md) gives the ordered replay path. Checkpoint 3 exercises node and workload failures; the [roadmap](docs/roadmap.md) defines the evidence required before each capability is considered complete.
 
 ## Getting started
 
