@@ -25,8 +25,9 @@ The three control-plane nodes can tolerate one K3s server being unavailable beca
 | `v0.0.1` | A libvirt NAT network and three stopped Ubuntu VMs provisioned with Terraform, including stable DHCP reservations, sparse disks, cloud-init SSH access, and serial consoles | K3s, Kubernetes, HAProxy, workloads, or host-level resilience |
 | `v0.1.0` | A validated three-server K3s cluster with embedded etcd, a host-side HAProxy API endpoint, one-node failure exercises, and full lab restart validation | Application workloads, workload failure exercises, etcd backup/restore, or a production-ready platform |
 | `v0.1.1` | Public-project documentation, licensing, portable entry points, and static validation for the existing `v0.1.0` capability | New cluster or workload capability |
+| `v0.2.0` | A versioned three-replica HTTP workload, ClusterIP Service, Traefik Ingress, and verified host access through K3s ServiceLB node listeners | Node/VM failure exercises, guaranteed cross-node Pod placement, a single stable application VIP, ingress-controller HA, or a production-ready platform |
 
-Checkpoint 2 adds a versioned HTTP workload, Kubernetes Service, and host-side route through Traefik Ingress on the private lab network. Follow the [workload routing runbook](docs/runbooks/k3s-workload-routing.md) to apply and validate it. The next functional checkpoint exercises node and workload failures. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
+Checkpoint 2 is delivered by `v0.2.0`. Follow the [workload routing runbook](docs/runbooks/k3s-workload-routing.md) to replay it. The next functional checkpoint exercises node and workload failures. The [roadmap](docs/roadmap.md) defines the evidence required before each later capability is considered complete.
 
 ## Requirements
 
