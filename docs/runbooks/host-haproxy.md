@@ -121,3 +121,7 @@ sudo systemctl reload haproxy
 ```
 
 Do not restore a backup over later intentional HAProxy changes. Removing the HAProxy package is optional and outside this lab's cleanup because the package and service are host-owned and may serve other configurations. Terraform cleanup does not remove host-owned HAProxy configuration or UFW rules.
+
+## Next step
+
+During cluster setup, return to the [K3s HA cluster build runbook](k3s-ha-cluster.md#stable-endpoint-and-remaining-servers) to join `k3s-2` and `k3s-3` through this endpoint. This HAProxy runbook is a substep of that build, not a separate replay checkpoint.

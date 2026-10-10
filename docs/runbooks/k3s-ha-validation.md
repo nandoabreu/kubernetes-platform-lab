@@ -123,3 +123,7 @@ Confirm all three nodes return to `Ready`, the stable API endpoint works, the et
 If two servers fail together or quorum is lost, stop disruptive changes and use a version-specific recovery procedure; do not improvise etcd membership changes. Snapshot/restore and full rebuild are separate procedures and are not established by this validation exercise.
 
 Checkpoint 1 validation completed on 2026-10-09: all three individual failure/recovery tests and the full lab shutdown/restart passed, API readiness remained healthy with one server unavailable, host resource headroom was reviewed, and failure impact/detection/recovery evidence was observed. The exercises verify quorum operationally rather than recording etcd member IDs.
+
+## Next step
+
+With the cluster healthy again, continue to the [K3s workload routing runbook](k3s-workload-routing.md) to apply and verify the `v0.2.0` `whoami` Service and Ingress. If you are ending this session, shut down the VMs gracefully; next time, [start and validate them](terraform-libvirt-vms.md#start-and-validate-the-vms) and confirm the cluster is healthy before continuing.

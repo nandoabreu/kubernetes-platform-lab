@@ -148,3 +148,7 @@ The build procedure has been exercised through formation of the three-server clu
 Terraform cleanup does not remove host-owned HAProxy or UFW changes. Follow the [Host HAProxy API Endpoint runbook](host-haproxy.md#roll-back-the-k3s-api-endpoint) to remove only this lab's API listener and firewall rule safely. Do not remove the shared HAProxy package or restore a backup over later intentional changes; the host service may contain other configurations.
 
 VM deletion, etcd snapshot/restore, and full rebuild procedures are not yet defined. Add and test them before calling the cluster reproducible or using it for important data.
+
+## Next step
+
+After all three nodes are `Ready` through the stable API endpoint, continue with [K3s HA validation](k3s-ha-validation.md). It exercises quorum, node failure and recovery, resource headroom, and a full lab restart.
