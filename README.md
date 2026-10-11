@@ -27,8 +27,9 @@ The three control-plane nodes can tolerate one K3s server being unavailable beca
 | `v0.1.1` | Public-project documentation, licensing, portable entry points, and static validation for the existing `v0.1.0` capability | New cluster or workload capability |
 | `v0.2.0` | A versioned three-replica HTTP workload, ClusterIP Service, Traefik Ingress, and verified host access through K3s ServiceLB node listeners | Node/VM failure exercises, guaranteed cross-node Pod placement, a single stable application VIP, ingress-controller HA, or a production-ready platform |
 | `v0.2.1` | The recommended, ordered replay path for the `v0.2.0` workload, including VM validation, cluster setup, and the distinction between K3s-packaged Traefik and the `whoami` Ingress route | New cluster or workload capability; Checkpoint 3 failure and recovery exercises |
+| `v0.3.0` | Validated Checkpoint 3 failure and recovery exercises: a single-replica node outage and replacement, service continuity from three deliberately spread replicas during one-node loss, Pod replacement, and recorded recovery evidence | Physical-host HA, ingress-controller HA, VM destroy/re-provision, zero-interruption recovery with one replica, or a production-ready platform |
 
-Checkpoint 2's workload capability was delivered by `v0.2.0`; use `v0.2.1` as the recommended replay baseline. The [documentation index](docs/README.md) gives the ordered replay path. Checkpoint 3 exercises node and workload failures; the [roadmap](docs/roadmap.md) defines the evidence required before each capability is considered complete.
+Checkpoint 2's workload capability was delivered by `v0.2.0`; use `v0.2.1` as the recommended replay baseline. Checkpoint 3's failure and recovery exercises are recorded in the [K3s workload failure and recovery runbook](docs/runbooks/k3s-failure-recovery.md). The [documentation index](docs/README.md) gives the ordered replay path, and the [roadmap](docs/roadmap.md) defines the evidence required before each capability is considered complete.
 
 ## Getting started
 
