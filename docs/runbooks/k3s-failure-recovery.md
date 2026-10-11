@@ -77,7 +77,7 @@ whoami_nodes=$(kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo 
 case " $whoami_nodes " in *" $failed_node "*) ;; *) printf 'No whoami Pod is assigned to %s\n' "$failed_node" >&2; exit 1 ;; esac
 read -r -p 'Healthy node for the Service probe: ' probe_node
 case "$probe_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected probe node: %s\n' "$probe_node" >&2; exit 1 ;; esac
-test "$probe_node" != "$failed_node"
+if [ "$probe_node" = "$failed_node" ]; then printf 'Probe node must differ from failed VM %s\n' "$failed_node" >&2; exit 1; fi
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes "$failed_node" "$probe_node"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo run service-check --rm -i --restart=Never --image=curlimages/curl:8.12.1 --overrides="{\"spec\":{\"nodeName\":\"${probe_node}\"}}" --command -- sh -c 'while true; do printf "\n---\n%s\n" "$(date -u +%FT%TZ)"; curl --connect-timeout 1 --max-time 3 --silent --show-error --write-out "\nHTTP %{http_code}\n" http://whoami.platform-demo.svc.cluster.local/; sleep 1; done' | grep --color=never -E '^(---|[0-9]{4}-[0-9]{2}-[0-9]{2}T|Hostname:|IP: 10|HTTP )'
 ```
