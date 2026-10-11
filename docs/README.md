@@ -24,8 +24,8 @@ For a full replay, follow these runbooks in order. Each runbook links to the nex
 
 For design and project status, read the [architecture](architecture.md) and [roadmap](roadmap.md).
 
-## Checkpoint 3 in progress
+## Checkpoint 3 complete
 
-The draft [K3s workload failure and recovery runbook](runbooks/k3s-failure-recovery.md) includes intentional VM power-off and workload interruption. It has not yet been exercised on the libvirt host; review its safety section before running the procedure.
+The owner exercised the [K3s workload failure and recovery runbook](runbooks/k3s-failure-recovery.md) on the libvirt host on 2026-10-11. It records the impact and recovery evidence for one- and three-replica VM failures. The checkpoint is complete; its release follows review and merge of the current PR.
 
 Runbooks become active when their roadmap checkpoint is implemented and validated. Architecture decisions that affect later checkpoints should be recorded under `adr/`.

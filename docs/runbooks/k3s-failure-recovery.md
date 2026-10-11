@@ -2,7 +2,15 @@
 
 ## Status
 
-This runbook defines the Checkpoint 3 failure exercises but has not yet been executed on the libvirt host. Do not mark the checkpoint complete until the owner records the required service impact, detection signals, recovery actions, and recovery evidence for each exercise.
+The owner completed the required Checkpoint 3 exercises on the libvirt host on 2026-10-11. The observed service impact, node detection, Pod replacement, and recovery evidence are recorded below. The optional one-shot crash-demo procedure was added after the owner observed intermittent `kubectl logs --previous` retrieval during a repeated crash loop; that revised optional procedure has not yet been run.
+
+## Recorded Checkpoint 3 results
+
+- **One replica on `k3s-2`:** abrupt VM power-off interrupted the sole Service endpoint. Probe requests first failed at `08:52:22Z` and returned HTTP `200` at `08:58:09Z` (approximately 5 minutes 47 seconds) from the replacement Pod on `k3s-3`. The node became `NotReady`, the Pod was marked for eviction after the observed 300-second `not-ready`/`unreachable` tolerations, and the API readiness check continued to pass with two etcd members available.
+- **Three spread replicas with `k3s-3` powered off:** the in-cluster probe had transient HTTP `000` results around the outage, then returned HTTP `200` from the replicas on `k3s-1` and `k3s-2`. `k3s-3` received `unreachable` taints and the replacement Pod remained `Pending` with `FailedScheduling` events because the hard spread rule would not place it on either surviving node while the failed node's Pod remained in the topology calculation. The warning events remained in the event history after recovery; the final Ready node/Pod/endpoint state confirmed they were no longer active failures.
+- **VM and workload recovery:** the owner restarted the same `k3s-3` VM at `11:10:20 WEST`; a `whoami` IP responded again at `10:11:56Z`, and all three nodes were `Ready` by the later `11:17:23 WEST` observation. The pending replacement was scheduled on `k3s-3`; the final three Pods were distributed one per node, the API and three Service endpoints were healthy, and the host Ingress returned HTTP `200`.
+- **Pod replacement:** deleting `whoami-59fb89bb5-2t4ln` on `k3s-3` caused the ReplicaSet to create a replacement on `k3s-1`, completing the three-node spread.
+- **Optional container crash:** the repeated-crash demo kept the same Pod UID, reached six container restarts, and produced the intentional Python traceback. `kubectl logs --previous` intermittently could not retrieve the prior container ID while the crash loop advanced; the revised one-shot optional procedure below is intended to keep the previous log stable but has not yet been exercised.
 
 ## Purpose and scope
 
@@ -42,9 +50,25 @@ Confirm each node is `Ready`, etcd readiness checks pass, and all three `whoami`
 
 ## Run a continuous in-cluster Service probe
 
-The probe calls `whoami.platform-demo.svc.cluster.local` directly and is pinned to a healthy node that will remain running during the selected VM outage. This separates application Service behaviour from host routing and the Traefik controller.
+The probe calls `whoami.platform-demo.svc.cluster.local` directly and is pinned to a healthy node that will remain running during the selected VM outage. This separates application Service behaviour from host routing and the Traefik controller. Its output is filtered to the timestamp, serving Pod, Pod IP, and HTTP status.
 
-Do not start this probe during the baseline checks. In each failure exercise below, first select the VM to stop; then run the probe from a different, healthy node in Terminal A. Keep Terminal A open during the outage and use Terminal B for the VM command.
+Do not start this probe during the baseline checks. Before launching it, check whether a `service-check` Pod from an earlier exercise is still running:
+
+```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pod/service-check --ignore-not-found -o wide
+```
+
+If the Pod is `Running` on a healthy node other than the VM selected for this failure, reuse it; do not run another `kubectl run` with the same name. Keep its current terminal open, or follow its output with:
+
+```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs -f pod/service-check | grep --color=never -E '^(---|[0-9]{4}-[0-9]{2}-[0-9]{2}T|Hostname:|IP: 10|HTTP )'
+```
+
+If it is absent, or pinned to the VM you plan to stop, clean up the old Pod below and launch a new probe from a different node. Keep the probe on Terminal A and use Terminal B for VM commands.
+
+When reusing a probe from an earlier exercise, use the `NODE` column above to identify its node; choose a failed VM on a different node. The shell variable from an earlier terminal is not shared with the new terminal.
+
+Run this command once for a new probe; it asks for both the failed VM and a different, healthy probe node in the same shell:
 
 ```sh
 read -r -p 'VM to stop for this exercise (k3s-1, k3s-2, or k3s-3): ' failed_node
@@ -55,10 +79,16 @@ read -r -p 'Healthy node for the Service probe: ' probe_node
 case "$probe_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected probe node: %s\n' "$probe_node" >&2; exit 1 ;; esac
 test "$probe_node" != "$failed_node"
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes "$failed_node" "$probe_node"
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo run service-check --rm -i --restart=Never --image=curlimages/curl:8.12.1 --overrides="{\"spec\":{\"nodeName\":\"${probe_node}\"}}" --command -- sh -c 'while true; do printf "\n%s\n" "$(date -u +%FT%TZ)"; curl --connect-timeout 1 --max-time 3 --silent --show-error --write-out "\nHTTP %{http_code}\n" http://whoami.platform-demo.svc.cluster.local/; sleep 1; done'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo run service-check --rm -i --restart=Never --image=curlimages/curl:8.12.1 --overrides="{\"spec\":{\"nodeName\":\"${probe_node}\"}}" --command -- sh -c 'while true; do printf "\n---\n%s\n" "$(date -u +%FT%TZ)"; curl --connect-timeout 1 --max-time 3 --silent --show-error --write-out "\nHTTP %{http_code}\n" http://whoami.platform-demo.svc.cluster.local/; sleep 1; done' | grep --color=never -E '^(---|[0-9]{4}-[0-9]{2}-[0-9]{2}T|Hostname:|IP: 10|HTTP )'
 ```
 
-The responses identify the serving Pod hostname. Keep this command running during each failure exercise and use a second terminal for VM and Kubernetes observations. `Ctrl-C` stops and removes the temporary probe Pod.
+The responses identify the serving Pod hostname. Keep this command running during each failure exercise and use a second terminal for VM and Kubernetes observations. After `Ctrl-C`, explicitly clean up the probe Pod before starting another probe; the `kubectl run --rm` client can exit while the Pod remains:
+
+```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo delete pod/service-check --ignore-not-found --wait=true
+```
+
+This removes only the temporary `service-check` Pod and is safe to repeat if `--rm` already removed it.
 
 ## Exercise 1: one replica and abrupt node loss
 
@@ -70,15 +100,17 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo rollout status 
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o wide
 ```
 
-In Terminal A, start the Service probe described above. Enter the VM hosting the only `whoami` Pod as `failed_node`, then choose a different healthy node for `probe_node`; confirm the probe returns HTTP `200`. In Terminal B, enter the same `failed_node`, check that it is running, and then cut power to that one VM:
+In Terminal A, start or reuse the Service probe and confirm it returns HTTP `200` from the only `whoami` Pod. Note the probe's node. In Terminal B, enter the VM hosting the `whoami` Pod as `failed_node`; it must be different from the probe node. Inspect its state; it must report `running` before you cut power to that VM:
 
 ```sh
-read -r -p 'Enter the same VM selected for the sole whoami Pod: ' failed_node
+read -r -p 'VM to stop (k3s-1, k3s-2, or k3s-3): ' failed_node
 case "$failed_node" in k3s-1|k3s-2|k3s-3) ;; *) printf 'Unexpected VM name: %s\n' "$failed_node" >&2; exit 1 ;; esac
-test "$(virsh domstate "$failed_node")" = running
+virsh domstate "$failed_node"
 virsh destroy "$failed_node"
-test "$(virsh domstate "$failed_node")" = 'shut off'
+virsh domstate "$failed_node"
 ```
+
+The first `domstate` output must be `running`; the second should be `shut off`. If either output differs, stop and investigate before continuing.
 
 In separate terminals, watch node and workload state while the in-cluster probe continues:
 
@@ -93,13 +125,15 @@ Record when requests first fail, when the node becomes `NotReady`, when the old 
 
 ### Recover the VM before continuing
 
-In Terminal B, start the same libvirt domain:
+In Terminal B, inspect the same libvirt domain before starting it:
 
 ```sh
-test "$(virsh domstate "$failed_node")" = 'shut off'
+virsh domstate "$failed_node"
 virsh start "$failed_node"
-test "$(virsh domstate "$failed_node")" = running
+virsh domstate "$failed_node"
 ```
+
+The first output should be `shut off` and the last should be `running`. If the first state differs, stop and inspect the VM rather than attempting another start.
 
 In Terminal C, watch for the node to return to `Ready`:
 
@@ -139,9 +173,21 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo rollout status 
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o wide
 ```
 
-Do not begin the failure until the three Ready `whoami` Pods are on three different nodes. Record which node hosts the single Traefik Pod. In Terminal A, start the Service probe described above, select the VM to stop and a different healthy probe node, and confirm responses identify all three replicas before the outage.
+Do not begin the failure until the three Ready `whoami` Pods are on three different nodes. With three replicas and three eligible hostname domains, the expected placement is one Pod per node. A `2 + 1 + 0` placement means a node may be excluded from the scheduler's eligible domains or the constraint may not be applied/matching; inspect the state before continuing:
 
-In a second terminal, enter the same `failed_node` selected above, confirm it is running, then abruptly stop it with `virsh destroy` as in Exercise 1. Continue watching node, Pod, EndpointSlice, API, and probe state. After the unavailable node is detected, record that the Service still returns HTTP `200` from the two remaining Ready replicas, the outage window if any, and what happens to the Pod previously assigned to the failed node. Do not require a replacement Pod to become Ready while a node is unavailable; the hard spread constraint may leave it Pending until the failed node returns.
+```sh
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes -o wide -L kubernetes.io/hostname
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get nodes -o custom-columns='NODE:.metadata.name,UNSCHEDULABLE:.spec.unschedulable,TAINTS:.spec.taints'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get deployment whoami -o jsonpath='{.spec.template.spec.topologySpreadConstraints}{"\n"}'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -l app.kubernetes.io/name=whoami -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,READY:.status.containerStatuses[0].ready'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get events --field-selector=reason=FailedScheduling --sort-by=.metadata.creationTimestamp
+```
+
+In the first output, `STATUS` should be `Ready` and `HOSTNAME` should be unique for each node. In the second, `UNSCHEDULABLE` set to `true` means the node is cordoned; `<none>` means it is not explicitly cordoned, but inspect `TAINTS` for `NoSchedule` or `NoExecute`. Confirm the Deployment template prints the spread rule and that each Pod is Ready on its own node. If only two nodes are eligible, a `2 + 1 + 0` distribution can satisfy `maxSkew: 1`; resolve the ineligible node or configuration issue before continuing. A lack of `FailedScheduling` events means there are no recorded scheduling failures, not proof of three eligible domains.
+
+Do not stop a node until the three replicas are Ready and distributed one per node. Record which node hosts the single Traefik Pod. In Terminal A, start or reuse the Service probe and confirm responses identify all three replicas. In Terminal B, choose a VM hosting a `whoami` Pod that is different from the probe node, then enter that VM at the shutdown prompt from Exercise 1.
+
+Use the selected VM with the `virsh domstate` and `virsh destroy` commands from Exercise 1. Continue watching node, Pod, EndpointSlice, API, and probe state. After the unavailable node is detected, record that the Service still returns HTTP `200` from the two remaining Ready replicas, the outage window if any, and what happens to the Pod previously assigned to the failed node. Do not require a replacement Pod to become Ready while a node is unavailable; the hard spread constraint may leave it Pending until the failed node returns.
 
 If the failed node hosts Traefik, test host-side Ingress separately through a ServiceLB listener on a surviving node and record any gateway interruption as an ingress-controller limitation, not as failure of the in-cluster ClusterIP Service. The Checkpoint 2 validation observed one Traefik Pod, so this exercise does not claim ingress-controller high availability:
 
@@ -170,22 +216,49 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pods -o wid
 
 Record that this creates a new Pod object with a new name; it is not a restart of the old container. Wait for all three replicas to become Ready and stop the watch with `Ctrl-C`.
 
-To observe a real container restart and a traceback without changing the `whoami` application or adding a Service, run this optional isolated Pod. Its process deliberately raises a Python exception; Kubernetes restarts the container inside the same Pod because its restart policy is `Always`:
+To observe a real container restart and a traceback without changing the `whoami` application or adding a Service, run this optional isolated Pod. It fails once with a Python exception; a marker in an `emptyDir` survives the container restart so the next instance stays alive while you inspect the previous logs:
 
 ```sh
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo run crash-demo --image=python:3.12.12-alpine3.22 --restart=Always --command -- python -u -c 'import time; time.sleep(5); raise RuntimeError("intentional Checkpoint 3 crash")'
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo delete pod/crash-demo --ignore-not-found --wait=true
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" apply -f - <<'YAML'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crash-demo
+  namespace: platform-demo
+spec:
+  restartPolicy: Always
+  containers:
+    - name: crash-demo
+      image: python:3.12.12-alpine3.22
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          if [ -e /state/crashed ]; then
+            printf '%s\n' 'Container restarted after the intentional failure'
+            exec sleep 3600
+          fi
+          touch /state/crashed
+          exec python -u -c 'raise RuntimeError("intentional Checkpoint 3 crash")'
+      volumeMounts:
+        - name: state
+          mountPath: /state
+  volumes:
+    - name: state
+      emptyDir: {}
+YAML
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pod crash-demo --watch
 ```
 
-After `RESTARTS` becomes greater than zero, inspect the current Pod description and the previous container logs:
+Wait until `RESTARTS` is `1` and the Pod is back to `Running`, then stop the watch with `Ctrl-C`. Confirm the current container is the post-restart process and inspect the previous container's traceback:
 
 ```sh
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo get pod crash-demo -o custom-columns='NAME:.metadata.name,UID:.metadata.uid,RESTARTS:.status.containerStatuses[0].restartCount,PHASE:.status.phase'
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo describe pod crash-demo
+kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs crash-demo
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo logs crash-demo --previous
 ```
 
-The Python traceback and non-zero exit are intentional. This demonstrates kubelet container restart within the same Pod; the separate `whoami` deletion above demonstrates ReplicaSet creation of a new Pod. Remove the temporary crash Pod after capturing the evidence:
+The current logs should report that the container restarted; `--previous` should show the intentional Python traceback. This demonstrates kubelet restarting a container inside the same Pod; the separate `whoami` deletion above demonstrates ReplicaSet creation of a new Pod. `kubectl logs --previous` exposes only the most recently terminated container and is not durable log storage. Remove the temporary crash Pod after capturing the evidence:
 
 ```sh
 kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" -n platform-demo delete pod crash-demo
@@ -213,10 +286,10 @@ After recording the evidence, if you are ending the lab session, gracefully stop
 
 ## Checkpoint 3 evidence and completion
 
-For both node failures, record the selected VM and its `whoami` placement, failure method, service impact, failed dependency, detection signal and timings, recovery action and owner, replacement scheduling, endpoint state, and evidence of restored HTTP responses. Preserve terminal output or sanitized notes outside Git; do not include kubeconfig contents, tokens, or unrelated host data.
+For each future replay, record the selected VM and its `whoami` placement, failure method, service impact, failed dependency, detection signal and timings, recovery action and owner, replacement scheduling, endpoint state, and evidence of restored HTTP responses. Preserve terminal output or sanitized notes outside Git; do not include kubeconfig contents, tokens, or unrelated host data.
 
-Checkpoint 3 is complete only after the one-replica outage and recovery, three spread replica service-continuity test, Pod replacement, and all-node recovery are exercised and the evidence is recorded. The optional crash-demo adds container restart and traceback evidence but is not required for the checkpoint.
+Checkpoint 3 was completed on 2026-10-11: the one-replica outage and recovery, three spread replica service-continuity test, Pod replacement, and all-node recovery were exercised and the evidence is recorded above. The optional crash-demo adds container restart and traceback evidence but is not required for the checkpoint.
 
 ## Next step
 
-After the owner reviews and records the Checkpoint 3 evidence, continue with the [roadmap](../roadmap.md) for the clean replay requirements of Checkpoint 4. These exercises demonstrate node-level recovery on VMs sharing one host, not physical-host high availability.
+Checkpoint 4 is the next roadmap capability and covers a reproducible clean replay. These exercises demonstrate node-level recovery on VMs sharing one host, not physical-host high availability.
