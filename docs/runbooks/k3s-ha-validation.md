@@ -24,7 +24,11 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
 
 Each node should show the `control-plane,etcd` roles, and verbose readiness should include passing `etcd` and `etcd-readiness` checks. The individual shutdown tests then demonstrate quorum while one member is unavailable. Three voting members require a quorum of two: one unavailable server leaves quorum; two unavailable servers leave only one vote, so etcd cannot commit updates and API operations that need the datastore fail. Do not stop two servers at the same time.
 
-Node roles, etcd readiness checks, and single-node outage tests verify quorum behaviour. The following read-only check additionally lists the configured etcd members. K3s does not install `etcdctl`; this downloads the upstream `v3.7.1` client matching the embedded etcd `v3.7.1-k3s3` base version, verifies its release checksum, uses K3s-managed TLS credentials, and removes the temporary files afterward:
+Node roles, etcd readiness checks, and single-node outage tests verify quorum behaviour. The following read-only check additionally lists the configured etcd members.
+
+### Read-only etcd member list
+
+K3s does not install `etcdctl`; this downloads the upstream `v3.7.1` client matching the embedded etcd `v3.7.1-k3s3` base version, verifies its release checksum, uses K3s-managed TLS credentials, and removes the temporary files afterward:
 
 ```sh
 LC_ALL=C ssh ubuntu@10.77.0.11 'bash -s' <<'REMOTE'

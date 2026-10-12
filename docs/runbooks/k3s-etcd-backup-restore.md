@@ -2,7 +2,7 @@
 
 ## Status
 
-This runbook defines the Checkpoint 4 procedure. The backup and both restore paths still require execution and evidence on the lab host before the checkpoint is complete.
+The owner validated backup and restore to the existing VMs on 2026-10-12 with K3s `v1.37.1+k3s1`; the snapshot, checksum, restored marker, API, nodes, workload endpoints, and HTTP Ingress response passed. Restore to newly provisioned VMs remains untested and is required before Checkpoint 4 is complete.
 
 ## Purpose and scope
 
@@ -12,7 +12,7 @@ The lab stores the snapshot and original K3s server token in a private directory
 
 K3s automatically creates local snapshots by default, but snapshots stored only inside a VM do not survive deletion or loss of that VM's disk. This procedure creates an on-demand snapshot, copies it to the host, and saves the matching server token needed to decrypt confidential data in the snapshot.
 
-The snapshot contains Kubernetes resources and cluster certificate data. Treat both the snapshot and server token as sensitive; do not display, commit, or store them in the VM disks. Use the pinned K3s version `v1.37.1+k3s1` for this checkpoint.
+The snapshot contains Kubernetes resources and cluster certificate data. Treat both the snapshot and server token as sensitive; do not display or commit them. The restore procedure stages temporary copies under root-only `/root/k3s-restore` on `k3s-1` and removes them during cleanup. Use the pinned K3s version `v1.37.1+k3s1` for this checkpoint.
 
 ## Prerequisites
 
@@ -51,23 +51,36 @@ kubectl -n platform-demo get configmap k3s-recovery-proof \
 Confirm the marker output includes the current backup run timestamp. Then request an on-demand snapshot on `k3s-1` and list snapshots to note the exact K3s snapshot name:
 
 ```sh
-LC_ALL=C ssh ubuntu@10.77.0.11 \
-  'sudo /usr/local/bin/k3s etcd-snapshot save --name k3s-etcd'
+SNAPSHOT_OUTPUT="$(LC_ALL=C ssh ubuntu@10.77.0.11 \
+  'sudo /usr/local/bin/k3s etcd-snapshot save --name k3s-etcd' 2>&1)"
+printf '%s\n' "$SNAPSHOT_OUTPUT"
+SNAPSHOT_NAME="${SNAPSHOT_OUTPUT##*Snapshot }"
+SNAPSHOT_NAME="${SNAPSHOT_NAME%% saved*}"
+case "$SNAPSHOT_NAME" in
+  k3s-etcd-k3s-1-[0-9]*)
+    printf 'Selected snapshot: %s\n' "$SNAPSHOT_NAME"
+    ;;
+  *)
+    printf 'Could not parse the snapshot name from K3s output: %s\n' \
+      "$SNAPSHOT_OUTPUT" >&2
+    false
+    ;;
+esac
 LC_ALL=C ssh ubuntu@10.77.0.11 'sudo /usr/local/bin/k3s etcd-snapshot list'
 ```
 
-`LC_ALL=C` prevents the host's unavailable `en_GB.UTF-8` locale from being forwarded to the guest. K3s may still log `Unknown flag --cluster-init` and `Unknown flag --tls-san` while the `etcd-snapshot` subcommand reads the shared server configuration; those server-only settings are skipped by this subcommand, and the warnings do not indicate a failed snapshot operation. Keep both settings in the K3s server configuration. Confirm the save command reports `Snapshot ... saved` and returns successfully.
+`LC_ALL=C` prevents the host's unavailable `en_GB.UTF-8` locale from being forwarded to the guest. K3s may still log `Unknown flag --cluster-init` and `Unknown flag --tls-san` while the `etcd-snapshot` subcommand reads the shared server configuration; those server-only settings are skipped by this subcommand, and the warnings do not indicate a failed snapshot operation. Keep both settings in the K3s server configuration. The save output names snapshots as `k3s-etcd-k3s-1-<unix-seconds>`; the command block extracts that name and the following list shows the snapshots on disk.
 
-Create a timestamped private host directory and copy the exact snapshot file and original server token from `k3s-1`. Replace `<snapshot-name>` with the exact name returned by the snapshot list; do not include angle brackets:
+Create a timestamped private host directory and copy the snapshot file named by `SNAPSHOT_NAME` and the original server token from `k3s-1`:
 
 ```sh
 umask 077
 BACKUP_ROOT="$HOME/.local/share/k3s-lab-backups"
 BACKUP_DIR="$BACKUP_ROOT/$SNAPSHOT_TIMESTAMP"
-SNAPSHOT_NAME='<snapshot-name>'
 SNAPSHOT_FILE="$BACKUP_DIR/k3s-etcd-snapshot"
 TOKEN_FILE="$BACKUP_DIR/k3s-server-token"
 MANIFEST_FILE="$BACKUP_DIR/k3s-etcd-manifest"
+test -n "$SNAPSHOT_NAME"
 install -d -m 0700 "$BACKUP_DIR"
 LC_ALL=C ssh ubuntu@10.77.0.11 \
   "sudo cat '/var/lib/rancher/k3s/server/db/snapshots/$SNAPSHOT_NAME'" \
@@ -164,9 +177,18 @@ LC_ALL=C ssh ubuntu@10.77.0.13 \
   'sudo mv /var/lib/rancher/k3s/server/db "/var/lib/rancher/k3s/server/db.pre-restore-$(date -u +%Y%m%dT%H%M%SZ)"'
 ```
 
-Restore the snapshot on `k3s-1` using the original server token, then start that server. The reset command must report that managed etcd membership was reset and that K3s can be restarted without `--cluster-reset`:
+Install the saved server token at K3s's active token path on `k3s-1`. This ensures the normal service restart and the Ansible join play both use the token that encrypted the snapshot:
 
 ```sh
+LC_ALL=C ssh ubuntu@10.77.0.11 \
+  'sudo install -o root -g root -m 0600 /root/k3s-restore/k3s-server-token /var/lib/rancher/k3s/server/token'
+```
+
+Restore the snapshot on `k3s-1` using the original server token. A successful reset prints `Managed etcd cluster membership has been reset, restart without --cluster-reset flag now.` K3s v1.37.1 may also log a `level=error` shutdown-request message and etcd status JSON as the one-shot reset process exits; that message is expected when the command exits successfully and prints the reset confirmation. This local Bash script starts the service only if the reset command succeeds:
+
+```sh
+bash -s <<'RESTORE'
+set -euo pipefail
 LC_ALL=C ssh ubuntu@10.77.0.11 \
   'sudo /usr/local/bin/k3s server --cluster-reset --cluster-reset-restore-path=/root/k3s-restore/k3s-etcd-snapshot --token-file=/root/k3s-restore/k3s-server-token'
 LC_ALL=C ssh ubuntu@10.77.0.11 'bash -s' <<'REMOTE'
@@ -174,6 +196,32 @@ set -e
 sudo systemctl start k3s
 sudo systemctl is-active k3s
 REMOTE
+RESTORE
+```
+
+### Verify the restored server token
+
+Before starting the peer servers, verify that K3s wrote the saved server token and node token on `k3s-1`. The join play reads the latter; compare hashes so the token itself is never printed:
+
+```sh
+bash -s <<'TOKEN_CHECK'
+set -euo pipefail
+TOKEN_FILE="$HOME/.local/share/k3s-lab-backups/$SNAPSHOT_TIMESTAMP/k3s-server-token"
+BACKUP_TOKEN_CHECKSUM="$(sha256sum -- "$TOKEN_FILE" | cut -d' ' -f1)"
+RESTORED_SERVER_TOKEN_CHECKSUM="$(LC_ALL=C ssh ubuntu@10.77.0.11 \
+  'sudo sha256sum /var/lib/rancher/k3s/server/token' | cut -d' ' -f1)"
+RESTORED_NODE_TOKEN_CHECKSUM="$(LC_ALL=C ssh ubuntu@10.77.0.11 \
+  'sudo sha256sum /var/lib/rancher/k3s/server/node-token' | cut -d' ' -f1)"
+if [ "$BACKUP_TOKEN_CHECKSUM" = "$RESTORED_SERVER_TOKEN_CHECKSUM" ] && \
+   [ "$BACKUP_TOKEN_CHECKSUM" = "$RESTORED_NODE_TOKEN_CHECKSUM" ]; then
+  printf 'Restored server and node tokens match the backup\n'
+else
+  printf 'Restored token mismatch: backup=%s server=%s node=%s\n' \
+    "$BACKUP_TOKEN_CHECKSUM" "$RESTORED_SERVER_TOKEN_CHECKSUM" \
+    "$RESTORED_NODE_TOKEN_CHECKSUM" >&2
+  exit 1
+fi
+TOKEN_CHECK
 ```
 
 The snapshot restore resets membership on `k3s-1`; the other servers must rejoin the restored cluster rather than reuse their old local etcd databases. Start the two peer servers after `k3s-1` is active:
@@ -206,9 +254,16 @@ Copy the snapshot and server token to the new `k3s-1` using the commands in [Res
 LC_ALL=C ssh ubuntu@10.77.0.11 'sudo systemctl stop k3s'
 ```
 
-Run the same `k3s server --cluster-reset --cluster-reset-restore-path=... --token-file=...` command from the existing-installation restore section, using the copied snapshot and token. Start K3s on `k3s-1` and confirm the service is active. The restore must complete before the first `kubectl` request to this recovery target.
+Install the saved server token at the active path before restoring. The fresh K3s bootstrap generated a temporary token; replace it so the restored service and Ansible join play use the token that encrypted the snapshot:
 
-Use the previously saved administrative kubeconfig as the first API client if available. It should authenticate if the snapshot restored the original cluster CA and the client certificate has not expired. If the kubeconfig was lost with the old host, retrieve a fresh one over SSH from the restored server and point it at the host HAProxy endpoint:
+```sh
+LC_ALL=C ssh ubuntu@10.77.0.11 \
+  'sudo install -o root -g root -m 0600 /root/k3s-restore/k3s-server-token /var/lib/rancher/k3s/server/token'
+```
+
+Leave the newly bootstrapped `server/db` in place; K3s moves existing etcd files to `db/etcd-old-*` as part of `--cluster-reset-restore-path`. Run the reset-and-start script from the existing-installation restore section. K3s will use the restored token file, and the service start regenerates `node-token`; complete [Verify the restored server token](#verify-the-restored-server-token) before the first `kubectl` request or joining peer servers.
+
+The restore decrypts and writes the original cluster CA and client certificate files from the snapshot. The normal K3s service start then rewrites `/etc/rancher/k3s/k3s.yaml` using those restored files. Use the previously saved administrative kubeconfig as the first API client if available; it should authenticate if its client certificate has not expired. If that kubeconfig is missing or fails because it contains pre-restore credentials, retrieve the post-restore kubeconfig over SSH and point it at the host HAProxy endpoint. Do not copy it from the newly bootstrapped server before the snapshot restore:
 
 ```sh
 umask 077
@@ -281,15 +336,69 @@ curl --fail --silent --show-error \
 VALIDATE
 ```
 
-If the existing kubeconfig is rejected after restore, stop and investigate the snapshot, token, K3s version, and API endpoint before replacing the kubeconfig; a TLS or authentication failure is not proof of a successful restore. If the restored API is healthy but the marker is absent, the restore failed its data-recovery criterion even if the manifests can be reapplied.
+Confirm the three embedded etcd members are configured and started by following the [read-only etcd member list check](k3s-ha-validation.md#read-only-etcd-member-list). It must show `k3s-1`, `k3s-2`, and `k3s-3` as started voting members (`IS LEARNER` is `false`); Kubernetes node readiness alone does not confirm etcd membership.
 
-After both restore paths pass, record the service impact, failed dependency, recovery action, elapsed time, node/API/workload checks, snapshot checksum, and recovery target. Remove the test marker only after the evidence is recorded:
+If the saved kubeconfig is rejected with a CA mismatch, fetch `/etc/rancher/k3s/k3s.yaml` again from `k3s-1` after the restored service is running; do not use the file generated during the fresh bootstrap. K3s restores the CA and client certificate files from the snapshot, then writes the kubeconfig from those files at normal server startup. If the post-restore kubeconfig is still rejected, stop and investigate the snapshot, token, K3s version, and API endpoint; do not bypass TLS validation. If the API is healthy but the marker is absent, the restore failed its data-recovery criterion even if the manifests can be reapplied.
+
+After both restore paths pass, record the service impact, failed dependency, recovery action, elapsed time, node/API/workload checks, etcd member list, snapshot checksum, and recovery target. Remove the test marker only after the evidence is recorded:
 
 ```sh
 kubectl -n platform-demo delete configmap k3s-recovery-proof
 ```
 
-Keep the host-local snapshot and server token only as long as needed for the lab exercise; delete them securely when the recovery test is complete. Preserve the `db.pre-restore-*` directories until the restored cluster has passed validation, then remove them from each VM to reclaim guest disk space.
+## Cleanup temporary recovery state
+
+Only after both restore paths have passed and evidence is recorded, remove the VM-side database archives, TLS archives, and staged snapshot/token. These files can contain cluster credentials. The cleanup leaves the active `/var/lib/rancher/k3s/server/token`, `/var/lib/rancher/k3s/server/node-token`, and `server/tls` files in place; K3s needs them to keep running. Run this cleanup on each VM:
+
+```sh
+LC_ALL=C ssh ubuntu@10.77.0.11 'bash -s' <<'CLEANUP'
+set -euo pipefail
+shopt -s nullglob
+for path in \
+  /var/lib/rancher/k3s/server/db.pre-restore-* \
+  /var/lib/rancher/k3s/server/db/etcd-old-* \
+  /var/lib/rancher/k3s/server/tls-*; do
+  printf 'Removing %s\n' "$path"
+  sudo rm -rf -- "$path"
+done
+if [ -d /root/k3s-restore ]; then
+  printf 'Removing /root/k3s-restore\n'
+  sudo rm -rf -- /root/k3s-restore
+fi
+CLEANUP
+LC_ALL=C ssh ubuntu@10.77.0.12 'bash -s' <<'CLEANUP'
+set -euo pipefail
+shopt -s nullglob
+for path in \
+  /var/lib/rancher/k3s/server/db.pre-restore-* \
+  /var/lib/rancher/k3s/server/db/etcd-old-* \
+  /var/lib/rancher/k3s/server/tls-*; do
+  printf 'Removing %s\n' "$path"
+  sudo rm -rf -- "$path"
+done
+if [ -d /root/k3s-restore ]; then
+  printf 'Removing /root/k3s-restore\n'
+  sudo rm -rf -- /root/k3s-restore
+fi
+CLEANUP
+LC_ALL=C ssh ubuntu@10.77.0.13 'bash -s' <<'CLEANUP'
+set -euo pipefail
+shopt -s nullglob
+for path in \
+  /var/lib/rancher/k3s/server/db.pre-restore-* \
+  /var/lib/rancher/k3s/server/db/etcd-old-* \
+  /var/lib/rancher/k3s/server/tls-*; do
+  printf 'Removing %s\n' "$path"
+  sudo rm -rf -- "$path"
+done
+if [ -d /root/k3s-restore ]; then
+  printf 'Removing /root/k3s-restore\n'
+  sudo rm -rf -- /root/k3s-restore
+fi
+CLEANUP
+```
+
+Keep or remove the host-local backup according to the lab's retention needs. If you remove it, delete only the selected timestamp directory under `$HOME/.local/share/k3s-lab-backups`; its snapshot and server token are sensitive.
 
 ## References
 
