@@ -80,28 +80,38 @@ BACKUP_DIR="$BACKUP_ROOT/$SNAPSHOT_TIMESTAMP"
 SNAPSHOT_FILE="$BACKUP_DIR/k3s-etcd-snapshot"
 TOKEN_FILE="$BACKUP_DIR/k3s-server-token"
 MANIFEST_FILE="$BACKUP_DIR/k3s-etcd-manifest"
-test -n "$SNAPSHOT_NAME"
-install -d -m 0700 "$BACKUP_DIR"
-LC_ALL=C ssh ubuntu@10.77.0.11 \
-  "sudo cat '/var/lib/rancher/k3s/server/db/snapshots/$SNAPSHOT_NAME'" \
-  > "$SNAPSHOT_FILE"
-LC_ALL=C ssh ubuntu@10.77.0.11 \
-  'sudo cat /var/lib/rancher/k3s/server/token' \
-  > "$TOKEN_FILE"
-chmod 0600 "$SNAPSHOT_FILE" "$TOKEN_FILE"
-test -s "$SNAPSHOT_FILE"
-test -s "$TOKEN_FILE"
-sha256sum "$SNAPSHOT_FILE"
-K3S_VERSION="$(LC_ALL=C ssh ubuntu@10.77.0.11 '/usr/local/bin/k3s --version')"
-K3S_VERSION="${K3S_VERSION#* version }"
-K3S_VERSION="${K3S_VERSION%% *}"
-test -n "$K3S_VERSION"
-SNAPSHOT_CHECKSUM="$(sha256sum -- "$SNAPSHOT_FILE" | cut -d' ' -f1)"
-printf 'Snapshot: %s\nK3s version: %s\nSHA-256: %s\nRestore marker: %s\nBackup run timestamp (UTC): %s\n' \
-  "$SNAPSHOT_NAME" "$K3S_VERSION" "$SNAPSHOT_CHECKSUM" "$EXPECTED_MARKER" "$SNAPSHOT_TIMESTAMP" \
-  > "$MANIFEST_FILE"
-chmod 0600 "$MANIFEST_FILE"
-ls -l "$BACKUP_DIR"
+(
+  set -euo pipefail
+  case "${SNAPSHOT_NAME:-}" in
+    k3s-etcd-k3s-1-[0-9]*) ;;
+    *)
+      printf 'Cannot copy snapshot: invalid SNAPSHOT_NAME: %s\n' \
+        "${SNAPSHOT_NAME:-<missing>}" >&2
+      exit 1
+      ;;
+  esac
+  install -d -m 0700 "$BACKUP_DIR"
+  LC_ALL=C ssh ubuntu@10.77.0.11 \
+    "sudo cat '/var/lib/rancher/k3s/server/db/snapshots/$SNAPSHOT_NAME'" \
+    > "$SNAPSHOT_FILE"
+  LC_ALL=C ssh ubuntu@10.77.0.11 \
+    'sudo cat /var/lib/rancher/k3s/server/token' \
+    > "$TOKEN_FILE"
+  chmod 0600 "$SNAPSHOT_FILE" "$TOKEN_FILE"
+  test -s "$SNAPSHOT_FILE"
+  test -s "$TOKEN_FILE"
+  sha256sum "$SNAPSHOT_FILE"
+  K3S_VERSION="$(LC_ALL=C ssh ubuntu@10.77.0.11 '/usr/local/bin/k3s --version')"
+  K3S_VERSION="${K3S_VERSION#* version }"
+  K3S_VERSION="${K3S_VERSION%% *}"
+  test -n "$K3S_VERSION"
+  SNAPSHOT_CHECKSUM="$(sha256sum -- "$SNAPSHOT_FILE" | cut -d' ' -f1)"
+  printf 'Snapshot: %s\nK3s version: %s\nSHA-256: %s\nRestore marker: %s\nBackup run timestamp (UTC): %s\n' \
+    "$SNAPSHOT_NAME" "$K3S_VERSION" "$SNAPSHOT_CHECKSUM" "$EXPECTED_MARKER" "$SNAPSHOT_TIMESTAMP" \
+    > "$MANIFEST_FILE"
+  chmod 0600 "$MANIFEST_FILE"
+  ls -l "$BACKUP_DIR"
+)
 ```
 
 The directory contains `k3s-etcd-snapshot`, `k3s-etcd-manifest`, and `k3s-server-token`. The manifest records non-secret metadata, including the per-backup restore marker; the snapshot and token remain private. The backup run timestamp identifies the directory and is embedded in the marker. Record the host-local path and completion time in the checkpoint evidence, but do not record the server token. Keep all three files together with restrictive permissions until both restore paths have passed.
