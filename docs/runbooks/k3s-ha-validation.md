@@ -24,7 +24,11 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" get --raw='/readyz?verbose'
 
 Each node should show the `control-plane,etcd` roles, and verbose readiness should include passing `etcd` and `etcd-readiness` checks. The individual shutdown tests then demonstrate quorum while one member is unavailable. Three voting members require a quorum of two: one unavailable server leaves quorum; two unavailable servers leave only one vote, so etcd cannot commit updates and API operations that need the datastore fail. Do not stop two servers at the same time.
 
-Node roles, etcd readiness checks, and single-node outage tests verify quorum behaviour. The following read-only check additionally lists the configured etcd members. K3s does not install `etcdctl`; this downloads the upstream `v3.7.1` client matching the embedded etcd `v3.7.1-k3s3` base version, verifies its release checksum, uses K3s-managed TLS credentials, and removes the temporary files afterward:
+Node roles, etcd readiness checks, and single-node outage tests verify quorum behaviour. The following read-only check additionally lists the configured etcd members.
+
+### Read-only etcd member list
+
+K3s does not install `etcdctl`; this downloads the upstream `v3.7.1` client matching the embedded etcd `v3.7.1-k3s3` base version, verifies its release checksum, uses K3s-managed TLS credentials, and removes the temporary files afterward:
 
 ```sh
 LC_ALL=C ssh ubuntu@10.77.0.11 'bash -s' <<'REMOTE'
@@ -120,7 +124,7 @@ Confirm all three nodes return to `Ready`, the stable API endpoint works, the et
 
 ## Recovery boundary and exit evidence
 
-If two servers fail together or quorum is lost, stop disruptive changes and use a version-specific recovery procedure; do not improvise etcd membership changes. Snapshot/restore and full rebuild are separate procedures and are not established by this validation exercise.
+If two servers fail together or quorum is lost, stop disruptive changes and use a version-specific recovery procedure; do not improvise etcd membership changes. Snapshot/restore is a separate procedure and is not established by this validation exercise; see the [K3s etcd backup and restore runbook](k3s-etcd-backup-restore.md).
 
 Checkpoint 1 validation completed on 2026-10-09: all three individual failure/recovery tests and the full lab shutdown/restart passed, API readiness remained healthy with one server unavailable, host resource headroom was reviewed, and failure impact/detection/recovery evidence was observed. The exercises verify quorum operationally rather than recording etcd member IDs.
 
