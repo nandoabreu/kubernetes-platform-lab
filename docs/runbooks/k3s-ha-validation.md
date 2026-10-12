@@ -120,7 +120,7 @@ Confirm all three nodes return to `Ready`, the stable API endpoint works, the et
 
 ## Recovery boundary and exit evidence
 
-If two servers fail together or quorum is lost, stop disruptive changes and use a version-specific recovery procedure; do not improvise etcd membership changes. Snapshot/restore and full rebuild are separate procedures and are not established by this validation exercise.
+If two servers fail together or quorum is lost, stop disruptive changes and use a version-specific recovery procedure; do not improvise etcd membership changes. Snapshot/restore is a separate procedure and is not established by this validation exercise; see the [K3s etcd backup and restore runbook](k3s-etcd-backup-restore.md).
 
 Checkpoint 1 validation completed on 2026-10-09: all three individual failure/recovery tests and the full lab shutdown/restart passed, API readiness remained healthy with one server unavailable, host resource headroom was reviewed, and failure impact/detection/recovery evidence was observed. The exercises verify quorum operationally rather than recording etcd member IDs.
 

@@ -292,4 +292,4 @@ Checkpoint 3 was completed on 2026-10-11: the one-replica outage and recovery, t
 
 ## Next step
 
-Checkpoint 4 is the next roadmap capability and covers a reproducible clean replay. These exercises demonstrate node-level recovery on VMs sharing one host, not physical-host high availability.
+Continue to [Checkpoint 4: K3s embedded etcd backup and restore](k3s-etcd-backup-restore.md). These exercises demonstrate node-level recovery on VMs sharing one host, not physical-host high availability.

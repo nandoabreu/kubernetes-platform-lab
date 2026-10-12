@@ -22,6 +22,7 @@ For a full replay, follow these runbooks in order. Each runbook links to the nex
 4. Verify quorum, node failure/recovery, and full restart in [K3s HA validation](runbooks/k3s-ha-validation.md).
 5. Apply and test the `v0.2.0` `whoami` workload using the [workload routing runbook](runbooks/k3s-workload-routing.md).
 6. Exercise workload failure and recovery using the [K3s failure and recovery runbook](runbooks/k3s-failure-recovery.md).
+7. Back up and restore embedded etcd using the [K3s backup and restore runbook](runbooks/k3s-etcd-backup-restore.md).
 
 For design and project status, read the [architecture](architecture.md) and [roadmap](roadmap.md).
 

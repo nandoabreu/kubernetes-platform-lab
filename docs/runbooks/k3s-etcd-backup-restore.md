@@ -34,21 +34,23 @@ kubectl get nodes -o wide
 kubectl -n platform-demo rollout status deployment/whoami --timeout=180s
 ```
 
-Create a non-secret marker in the API. A ConfigMap is a Kubernetes key/value object; the API server persists it in etcd. This marker is deliberately absent from repository manifests, so applying the workload manifests cannot recreate it after recovery.
+Create a non-secret, per-backup marker in the API. A ConfigMap is a Kubernetes key/value object; the API server persists it in etcd. The marker value includes the unique backup timestamp, is recorded in that backup's manifest, and is deliberately absent from repository manifests. This lets recovery verify which backup's state returned, rather than accepting the same static marker from an older snapshot.
 
 ```sh
+SNAPSHOT_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)"
+export SNAPSHOT_TIMESTAMP
+EXPECTED_MARKER="k3s-etcd-snapshot-$SNAPSHOT_TIMESTAMP"
+printf 'Backup run timestamp (UTC): %s\n' "$SNAPSHOT_TIMESTAMP"
 kubectl -n platform-demo delete configmap k3s-recovery-proof --ignore-not-found
 kubectl -n platform-demo create configmap k3s-recovery-proof \
-  --from-literal=proof=restored-from-k3s-etcd-snapshot
+  --from-literal=proof="$EXPECTED_MARKER"
 kubectl -n platform-demo get configmap k3s-recovery-proof \
   -o jsonpath='{.data.proof}{"\n"}'
 ```
 
-The output must be `restored-from-k3s-etcd-snapshot`. Capture the UTC time immediately before requesting an on-demand snapshot on `k3s-1`, then list snapshots and note the exact snapshot name:
+Confirm the marker output includes the current backup run timestamp. Then request an on-demand snapshot on `k3s-1` and list snapshots to note the exact K3s snapshot name:
 
 ```sh
-SNAPSHOT_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-printf 'Snapshot request timestamp (UTC): %s\n' "$SNAPSHOT_TIMESTAMP"
 LC_ALL=C ssh ubuntu@10.77.0.11 \
   'sudo /usr/local/bin/k3s etcd-snapshot save --name k3s-etcd'
 LC_ALL=C ssh ubuntu@10.77.0.11 'sudo /usr/local/bin/k3s etcd-snapshot list'
@@ -56,7 +58,7 @@ LC_ALL=C ssh ubuntu@10.77.0.11 'sudo /usr/local/bin/k3s etcd-snapshot list'
 
 `LC_ALL=C` prevents the host's unavailable `en_GB.UTF-8` locale from being forwarded to the guest. K3s may still log `Unknown flag --cluster-init` and `Unknown flag --tls-san` while the `etcd-snapshot` subcommand reads the shared server configuration; those server-only settings are skipped by this subcommand, and the warnings do not indicate a failed snapshot operation. Keep both settings in the K3s server configuration. Confirm the save command reports `Snapshot ... saved` and returns successfully.
 
-Create a timestamped private host directory and copy the exact snapshot file and original server token from `k3s-1`. Replace the placeholders with the timestamp and snapshot name recorded above; do not include angle brackets:
+Create a timestamped private host directory and copy the exact snapshot file and original server token from `k3s-1`. Replace `<snapshot-name>` with the exact name returned by the snapshot list; do not include angle brackets:
 
 ```sh
 umask 077
@@ -82,20 +84,20 @@ K3S_VERSION="${K3S_VERSION#* version }"
 K3S_VERSION="${K3S_VERSION%% *}"
 test -n "$K3S_VERSION"
 SNAPSHOT_CHECKSUM="$(sha256sum -- "$SNAPSHOT_FILE" | cut -d' ' -f1)"
-printf 'Snapshot: %s\nK3s version: %s\nSHA-256: %s\nSnapshot request timestamp (UTC): %s\n' \
-  "$SNAPSHOT_NAME" "$K3S_VERSION" "$SNAPSHOT_CHECKSUM" "$SNAPSHOT_TIMESTAMP" \
+printf 'Snapshot: %s\nK3s version: %s\nSHA-256: %s\nRestore marker: %s\nBackup run timestamp (UTC): %s\n' \
+  "$SNAPSHOT_NAME" "$K3S_VERSION" "$SNAPSHOT_CHECKSUM" "$EXPECTED_MARKER" "$SNAPSHOT_TIMESTAMP" \
   > "$MANIFEST_FILE"
 chmod 0600 "$MANIFEST_FILE"
 ls -l "$BACKUP_DIR"
 ```
 
-The directory contains `k3s-etcd-snapshot`, `k3s-etcd-manifest`, and `k3s-server-token`. The manifest records non-secret metadata; the snapshot and token remain private. Its timestamp is captured immediately before the snapshot request; filesystem birth time is not used because some filesystems report it as unavailable. Record the host-local path and completion time in the checkpoint evidence, but do not record the server token. Keep all three files together with restrictive permissions until both restore paths have passed.
+The directory contains `k3s-etcd-snapshot`, `k3s-etcd-manifest`, and `k3s-server-token`. The manifest records non-secret metadata, including the per-backup restore marker; the snapshot and token remain private. The backup run timestamp identifies the directory and is embedded in the marker. Record the host-local path and completion time in the checkpoint evidence, but do not record the server token. Keep all three files together with restrictive permissions until both restore paths have passed.
 
 ## Restore to the existing VM installation
 
 This path restores the existing VM installation from the selected snapshot. The Kubernetes API and workload will be unavailable until recovery succeeds.
 
-The commands assume the backup and restore blocks run in the same host shell, so they reuse the timestamp generated during backup. If recovery starts in a new shell later, set `SNAPSHOT_TIMESTAMP` once to the selected backup directory name under `$HOME/.local/share/k3s-lab-backups`; do not replace it with the current time.
+The commands assume the backup and restore blocks run in the same host shell, so they reuse the exported timestamp generated during backup. If recovery starts in a new shell later, export `SNAPSHOT_TIMESTAMP` once using the selected backup directory name under `$HOME/.local/share/k3s-lab-backups`; do not replace it with the current time.
 
 The marker must be absent from the live cluster before recovery so its return can only come from the snapshot:
 
@@ -133,8 +135,14 @@ LC_ALL=C ssh ubuntu@10.77.0.11 \
   'sudo chmod 0600 /root/k3s-restore/k3s-server-token'
 SNAPSHOT_CHECKSUM="$(sha256sum -- "$SNAPSHOT_FILE" | cut -d' ' -f1)"
 REMOTE_SNAPSHOT_CHECKSUM="$(LC_ALL=C ssh ubuntu@10.77.0.11 \
-  'sudo sha256sum /root/k3s-restore/k3s-etcd-snapshot')"
-test "$SNAPSHOT_CHECKSUM" = "${REMOTE_SNAPSHOT_CHECKSUM%% *}"
+  'sudo sha256sum /root/k3s-restore/k3s-etcd-snapshot' | cut -d' ' -f1)"
+if [ "$SNAPSHOT_CHECKSUM" = "$REMOTE_SNAPSHOT_CHECKSUM" ]; then
+  printf 'Snapshot checksum verified: %s\n' "$SNAPSHOT_CHECKSUM"
+else
+  printf 'Snapshot checksum mismatch: local=%s remote=%s\n' \
+    "$SNAPSHOT_CHECKSUM" "$REMOTE_SNAPSHOT_CHECKSUM" >&2
+  false
+fi
 ```
 
 Stop K3s on each server:
@@ -213,14 +221,29 @@ kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" \
   config set-cluster default --server=https://10.77.0.1:6443
 ```
 
-Verify the marker before deleting stale node registrations or joining replacement VMs. The snapshot contains the old node objects, and newly provisioned VMs have new node identities; deleting the old node objects also removes their K3s node-password secrets:
+Verify the restored marker before deleting stale node registrations or joining replacement VMs. The snapshot contains the old node objects, and newly provisioned VMs have new node identities; deleting the old node objects also removes their K3s node-password secrets. This check prints the observed value and stops before deleting nodes if it does not match:
 
 ```sh
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" \
+bash -s <<'RESTORE_CHECK'
+set -euo pipefail
+KUBECONFIG="$HOME/.kube/k3s-lab.yaml"
+EXPECTED_MARKER="k3s-etcd-snapshot-$SNAPSHOT_TIMESTAMP"
+if ! ACTUAL_MARKER="$(kubectl --kubeconfig "$KUBECONFIG" \
   -n platform-demo get configmap k3s-recovery-proof \
-  -o jsonpath='{.data.proof}{"\n"}'
-kubectl --kubeconfig "$HOME/.kube/k3s-lab.yaml" \
+  -o jsonpath='{.data.proof}')"; then
+  printf 'Could not read the restored marker; inspect the kubectl error above\n' >&2
+  exit 1
+fi
+if [ "$ACTUAL_MARKER" = "$EXPECTED_MARKER" ]; then
+  printf 'Restored marker verified: %s\n' "$ACTUAL_MARKER"
+else
+  printf 'Restored marker mismatch: expected=%s actual=%s\n' \
+    "$EXPECTED_MARKER" "${ACTUAL_MARKER:-<missing>}" >&2
+  exit 1
+fi
+kubectl --kubeconfig "$KUBECONFIG" \
   delete node k3s-1 k3s-2 k3s-3 --ignore-not-found
+RESTORE_CHECK
 ```
 
 Join `k3s-2` and `k3s-3` to the restored cluster by following the join stage in the [K3s HA cluster runbook](k3s-ha-cluster.md#stable-endpoint-and-remaining-servers). That play reads the restored server token from `k3s-1`; it does not bootstrap another cluster.
@@ -230,9 +253,22 @@ Join `k3s-2` and `k3s-3` to the restored cluster by following the join stage in 
 Set the kubeconfig path and verify the marker is still present with the expected value. This object is not in the repository manifests, so its return proves that data from the etcd snapshot was restored rather than recreated by applying the demo workload:
 
 ```sh
+bash -s <<'VALIDATE'
+set -euo pipefail
 export KUBECONFIG="$HOME/.kube/k3s-lab.yaml"
-test "$(kubectl -n platform-demo get configmap k3s-recovery-proof \
-  -o jsonpath='{.data.proof}')" = 'restored-from-k3s-etcd-snapshot'
+EXPECTED_MARKER="k3s-etcd-snapshot-$SNAPSHOT_TIMESTAMP"
+if ! ACTUAL_MARKER="$(kubectl -n platform-demo get configmap k3s-recovery-proof \
+  -o jsonpath='{.data.proof}')"; then
+  printf 'Could not read the restored marker; inspect the kubectl error above\n' >&2
+  exit 1
+fi
+if [ "$ACTUAL_MARKER" = "$EXPECTED_MARKER" ]; then
+  printf 'Restored marker verified: %s\n' "$ACTUAL_MARKER"
+else
+  printf 'Restored marker mismatch: expected=%s actual=%s\n' \
+    "$EXPECTED_MARKER" "${ACTUAL_MARKER:-<missing>}" >&2
+  exit 1
+fi
 kubectl get --raw='/readyz?verbose'
 kubectl wait --for=condition=Ready node --all --timeout=300s
 kubectl get nodes -o wide
@@ -242,6 +278,7 @@ kubectl -n platform-demo get endpointslice \
 curl --fail --silent --show-error \
   --resolve whoami.k3s-lab.test:80:10.77.0.11 \
   http://whoami.k3s-lab.test/
+VALIDATE
 ```
 
 If the existing kubeconfig is rejected after restore, stop and investigate the snapshot, token, K3s version, and API endpoint before replacing the kubeconfig; a TLS or authentication failure is not proof of a successful restore. If the restored API is healthy but the marker is absent, the restore failed its data-recovery criterion even if the manifests can be reapplied.

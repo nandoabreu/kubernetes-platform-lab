@@ -147,7 +147,7 @@ The build procedure has been exercised through formation of the three-server clu
 
 Terraform cleanup does not remove host-owned HAProxy or UFW changes. Follow the [Host HAProxy API Endpoint runbook](host-haproxy.md#roll-back-the-k3s-api-endpoint) to remove only this lab's API listener and firewall rule safely. Do not remove the shared HAProxy package or restore a backup over later intentional changes; the host service may contain other configurations.
 
-VM deletion, etcd snapshot/restore, and full rebuild procedures are not yet defined. Add and test them before calling the cluster reproducible or using it for important data.
+The repository's existing Terraform, Ansible, and validation runbooks provide the replay path for recreating the lab; they do not restore runtime state that is absent from versioned inputs. The [Checkpoint 4 K3s etcd backup and restore runbook](k3s-etcd-backup-restore.md) covers recovery of Kubernetes API state, not persistent application data.
 
 ## Next step
 
